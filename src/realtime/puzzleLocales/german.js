@@ -1,0 +1,95 @@
+/** 5-letter German words (ASCII, no umlauts) for Sudoword. */
+const SUDOWORD_WORD_BANK = [
+  'APFEL',
+  'BLUME',
+  'TISCH',
+  'STUHL',
+  'WOLKE',
+  'STADT',
+  'SONNE',
+  'BRAUN',
+  'GRUEN',
+  'WEISS',
+  'HUNDE',
+  'KATZE',
+  'VOGEL',
+  'FISCH',
+  'FLUSS',
+  'BERGE',
+  'HAUSE',
+  'BROTE',
+  'WELCH',
+  'NACHT',
+  'MORGE',
+  'ABEND',
+  'FRUEH',
+  'REGEN',
+  'STURM',
+  'SCHNE',
+  'LICHT',
+  'MUSIK',
+  'PARK',
+].filter(word => word.length === 5);
+
+const SYNOWORD_BANK = [
+  { word: 'FROH', synonyms: ['GLUECK', 'HEITER', 'FREUD', 'FRISCH'] },
+  { word: 'TRAURIG', synonyms: ['TRAUR', 'BETRUE', 'DUESTE', 'MELANC'] },
+  { word: 'GROSS', synonyms: ['RIESIG', 'WEIT', 'BREIT', 'HOCH'] },
+  { word: 'KLEIN', synonyms: ['WINZIG', 'KURZ', 'GERING', 'MINI'] },
+  { word: 'SCHNELL', synonyms: ['RASCH', 'FLINK', 'EILIG', 'HURRY'] },
+  { word: 'LANGSAM', synonyms: ['LAHM', 'SPAET', 'ZOGERN', 'RUHIG'] },
+  { word: 'WARM', synonyms: ['HEISS', 'MILD', 'LAU', 'TEMPE'] },
+  { word: 'KALT', synonyms: ['KUEHL', 'EISIG', 'FROST', 'NASS'] },
+  { word: 'SCHOEN', synonyms: ['HUEBSCH', 'NETT', 'FEIN', 'GUT'] },
+  { word: 'HASSLICH', synonyms: ['HASSL', 'SCHLE', 'BLOED', 'HAESS'] },
+  { word: 'STARK', synonyms: ['KRAFT', 'FEST', 'ROBUST', 'HART'] },
+  { word: 'SCHWACH', synonyms: ['ZART', 'WEICH', 'MILD', 'LEISE'] },
+  { word: 'NEU', synonyms: ['FRISCH', 'JUNG', 'MODERN', 'NEU'] },
+  { word: 'ALT', synonyms: ['ALT', 'GRAU', 'REIF', 'LAHM'] },
+  { word: 'EINFACH', synonyms: ['LEICHT', 'KLAR', 'SIMPLE', 'BASIC'] },
+  { word: 'SCHWER', synonyms: ['HART', 'SCHWE', 'KOMPLE', 'TIEF'] },
+  { word: 'NAH', synonyms: ['DICHT', 'ENG', 'NAH', 'BALD'] },
+  { word: 'WEIT', synonyms: ['FERN', 'ENTFER', 'WEIT', 'LANG'] },
+  { word: 'OFFEN', synonyms: ['FREI', 'KLAR', 'LEER', 'OFFEN'] },
+  { word: 'GESCHLOSSEN', synonyms: ['ZU', 'DICHT', 'FEST', 'LOCK'] },
+];
+
+const ANTOWORD_BANK = [
+  { word: 'FROH', antonyms: ['TRAUR', 'BETRUE', 'DUESTE'] },
+  { word: 'GROSS', antonyms: ['KLEIN', 'WINZIG', 'MINI'] },
+  { word: 'SCHNELL', antonyms: ['LANGS', 'LAHM', 'SPAET'] },
+  { word: 'WARM', antonyms: ['KALT', 'KUEHL', 'EISIG'] },
+  { word: 'NEU', antonyms: ['ALT', 'GRAU', 'REIF'] },
+  { word: 'EINFACH', antonyms: ['SCHWE', 'HART', 'KOMPLE'] },
+  { word: 'STARK', antonyms: ['SCHWA', 'ZART', 'WEICH'] },
+  { word: 'OFFEN', antonyms: ['ZU', 'DICHT', 'FEST'] },
+  { word: 'TAG', antonyms: ['NACHT', 'ABEND', 'DUNKL'] },
+  { word: 'STEIGEN', antonyms: ['FALLEN', 'SINKEN', 'RUNTER'] },
+  { word: 'EINGANG', antonyms: ['AUSGANG', 'WEG', 'FLUCHT'] },
+  { word: 'LIEBEN', antonyms: ['HASSEN', 'ABLEHN', 'STREIT'] },
+  { word: 'WAHR', antonyms: ['FALSCH', 'LUEGE', 'UNWAHR'] },
+  { word: 'VOLL', antonyms: ['LEER', 'HUECO', 'ARM'] },
+  { word: 'SAUBER', antonyms: ['SCHMU', 'DRECK', 'UNREIN'] },
+];
+
+const STORY_BANK = [
+  {
+    title: 'Der Morgenkaffee',
+    body: 'Ich trinke jeden Morgen Kaffee. Heute verpasste ich den Zug und kam zu spät. Am Bahnhof öffnete ich mein Notizbuch und schrieb Ideen für das Meeting. Der nächste Zug hatte Verspätung und das Meeting auch. Ich lachte leise, weil der Stress nicht half.',
+  },
+  {
+    title: 'Ein Brief von zu Hause',
+    body: 'An einem regnerischen Dienstag kam ein Brief von meiner Großmutter. Er enthielt Fotos und ein Rezept für Suppe aus der Kindheit. An diesem Abend kochte ich und lud Nachbarn ein. Wir sprachen über warme Worte und ich versprach, vor dem Winter zu besuchen.',
+  },
+  {
+    title: 'Der erste Vortrag',
+    body: 'Ich sprach nie vor Publikum, bis mein Team mich vorschlug. Wochenlang übte ich in leeren Räumen. Auf der Bühne zitterten meine Hände, aber der erste Witz brachte Lachen. Das Vertrauen wuchs Satz für Satz. Ein Student sagte, die Forschung fühlte sich menschlich an.',
+  },
+];
+
+module.exports = {
+  SUDOWORD_WORD_BANK,
+  SYNOWORD_BANK,
+  ANTOWORD_BANK,
+  STORY_BANK,
+};

@@ -1,0 +1,3432 @@
+const { randomBotName } = require('./sudowordPuzzles');
+
+const QUESTION_BANK = [
+  [
+    "She was very ___ after winning.",
+    "joyful",
+    [
+      "broken",
+      "empty"
+    ]
+  ],
+  [
+    "He looked ___ when he heard the bad news.",
+    "devastated",
+    [
+      "thrilled",
+      "hungry"
+    ]
+  ],
+  [
+    "The room felt ___ after everyone left.",
+    "empty",
+    [
+      "crowded",
+      "noisy"
+    ]
+  ],
+  [
+    "She gave a ___ smile before the interview.",
+    "nervous",
+    [
+      "confident",
+      "angry"
+    ]
+  ],
+  [
+    "They were ___ to hear their team had won.",
+    "thrilled",
+    [
+      "bored",
+      "sleepy"
+    ]
+  ],
+  [
+    "He stayed ___ even under pressure.",
+    "calm",
+    [
+      "panicked",
+      "loud"
+    ]
+  ],
+  [
+    "The child was ___ about the first day of school.",
+    "anxious",
+    [
+      "excited",
+      "proud"
+    ]
+  ],
+  [
+    "After the long hike, everyone felt ___.",
+    "exhausted",
+    [
+      "energetic",
+      "curious"
+    ]
+  ],
+  [
+    "She felt ___ when nobody answered her question.",
+    "embarrassed",
+    [
+      "proud",
+      "relieved"
+    ]
+  ],
+  [
+    "He was ___ that he forgot his wallet at home.",
+    "annoyed",
+    [
+      "grateful",
+      "calm"
+    ]
+  ],
+  [
+    "The movie ending left me feeling ___.",
+    "moved",
+    [
+      "bored",
+      "hungry"
+    ]
+  ],
+  [
+    "They were ___ to finally meet in person.",
+    "delighted",
+    [
+      "upset",
+      "tired"
+    ]
+  ],
+  [
+    "She sounded ___ on the phone after the promotion.",
+    "ecstatic",
+    [
+      "miserable",
+      "bored"
+    ]
+  ],
+  [
+    "He looked ___ after staying up all night.",
+    "exhausted",
+    [
+      "refreshed",
+      "cheerful"
+    ]
+  ],
+  [
+    "The apology made her feel ___.",
+    "relieved",
+    [
+      "angry",
+      "confused"
+    ]
+  ],
+  [
+    "He felt ___ about lying to his friend.",
+    "guilty",
+    [
+      "proud",
+      "excited"
+    ]
+  ],
+  [
+    "The surprise party made her ___.",
+    "speechless",
+    [
+      "hungry",
+      "late"
+    ]
+  ],
+  [
+    "They grew ___ waiting in the long line.",
+    "impatient",
+    [
+      "patient",
+      "grateful"
+    ]
+  ],
+  [
+    "She was ___ to try the spicy food.",
+    "hesitant",
+    [
+      "eager",
+      "certain"
+    ]
+  ],
+  [
+    "He felt ___ when the lights went out.",
+    "uneasy",
+    [
+      "safe",
+      "bored"
+    ]
+  ],
+  [
+    "The test results made him feel ___.",
+    "hopeful",
+    [
+      "hopeless",
+      "angry"
+    ]
+  ],
+  [
+    "She was ___ about speaking in public.",
+    "terrified",
+    [
+      "calm",
+      "bored"
+    ]
+  ],
+  [
+    "He seemed ___ after winning the award.",
+    "humble",
+    [
+      "arrogant",
+      "rude"
+    ]
+  ],
+  [
+    "The news left the town feeling ___.",
+    "shocked",
+    [
+      "indifferent",
+      "sleepy"
+    ]
+  ],
+  [
+    "She felt ___ when her idea was ignored.",
+    "frustrated",
+    [
+      "satisfied",
+      "calm"
+    ]
+  ],
+  [
+    "He was ___ to help carry the heavy boxes.",
+    "willing",
+    [
+      "reluctant",
+      "afraid"
+    ]
+  ],
+  [
+    "The puppy looked ___ in the rain.",
+    "miserable",
+    [
+      "happy",
+      "proud"
+    ]
+  ],
+  [
+    "They were ___ about the deadline tomorrow.",
+    "stressed",
+    [
+      "relaxed",
+      "carefree"
+    ]
+  ],
+  [
+    "She felt ___ after finishing the marathon.",
+    "accomplished",
+    [
+      "defeated",
+      "lost"
+    ]
+  ],
+  [
+    "He was ___ that the store was already closed.",
+    "disappointed",
+    [
+      "thrilled",
+      "calm"
+    ]
+  ],
+  [
+    "The soup was too ___ to eat.",
+    "hot",
+    [
+      "soft",
+      "quiet"
+    ]
+  ],
+  [
+    "The ice cream was still ___.",
+    "frozen",
+    [
+      "warm",
+      "liquid"
+    ]
+  ],
+  [
+    "The bread smelled freshly ___.",
+    "baked",
+    [
+      "frozen",
+      "raw"
+    ]
+  ],
+  [
+    "The coffee tasted too ___ for me.",
+    "bitter",
+    [
+      "sweet",
+      "soft"
+    ]
+  ],
+  [
+    "The fruit was perfectly ___.",
+    "ripe",
+    [
+      "rotten",
+      "metal"
+    ]
+  ],
+  [
+    "The steak was a bit ___ for my taste.",
+    "tough",
+    [
+      "smooth",
+      "quiet"
+    ]
+  ],
+  [
+    "The lemonade was refreshingly ___.",
+    "cold",
+    [
+      "heavy",
+      "loud"
+    ]
+  ],
+  [
+    "The cake was surprisingly ___.",
+    "moist",
+    [
+      "dry",
+      "sharp"
+    ]
+  ],
+  [
+    "The vegetables were still ___.",
+    "crisp",
+    [
+      "soggy",
+      "dull"
+    ]
+  ],
+  [
+    "The tea was too ___ to drink quickly.",
+    "hot",
+    [
+      "cold",
+      "slow"
+    ]
+  ],
+  [
+    "The pizza arrived ___ and delicious.",
+    "warm",
+    [
+      "frozen",
+      "empty"
+    ]
+  ],
+  [
+    "The salad looked fresh and ___.",
+    "colorful",
+    [
+      "silent",
+      "heavy"
+    ]
+  ],
+  [
+    "The noodles were too ___ and broke apart.",
+    "soft",
+    [
+      "firm",
+      "bright"
+    ]
+  ],
+  [
+    "The butter was too ___ to spread.",
+    "hard",
+    [
+      "liquid",
+      "sweet"
+    ]
+  ],
+  [
+    "The honey was thick and ___.",
+    "sticky",
+    [
+      "crispy",
+      "bitter"
+    ]
+  ],
+  [
+    "The milk had gone ___.",
+    "sour",
+    [
+      "fresh",
+      "sweet"
+    ]
+  ],
+  [
+    "The chips were too ___ to chew.",
+    "salty",
+    [
+      "bland",
+      "soft"
+    ]
+  ],
+  [
+    "The sauce was rich and ___.",
+    "creamy",
+    [
+      "crunchy",
+      "hollow"
+    ]
+  ],
+  [
+    "The apple was sweet and ___.",
+    "juicy",
+    [
+      "dry",
+      "bitter"
+    ]
+  ],
+  [
+    "The rice was perfectly ___.",
+    "fluffy",
+    [
+      "burnt",
+      "loud"
+    ]
+  ],
+  [
+    "The weather turned ___ by afternoon.",
+    "stormy",
+    [
+      "calm",
+      "indoor"
+    ]
+  ],
+  [
+    "It was a ___ sunny morning.",
+    "bright",
+    [
+      "dark",
+      "noisy"
+    ]
+  ],
+  [
+    "The wind felt ___ on the beach.",
+    "cool",
+    [
+      "heavy",
+      "sweet"
+    ]
+  ],
+  [
+    "The sky looked ___ before the rain.",
+    "gray",
+    [
+      "clear",
+      "loud"
+    ]
+  ],
+  [
+    "The road was ___ after the snow.",
+    "slippery",
+    [
+      "safe",
+      "dry"
+    ]
+  ],
+  [
+    "The air smelled ___ after the rain.",
+    "fresh",
+    [
+      "stale",
+      "bitter"
+    ]
+  ],
+  [
+    "The night was unusually ___.",
+    "quiet",
+    [
+      "crowded",
+      "spicy"
+    ]
+  ],
+  [
+    "The temperature dropped ___ overnight.",
+    "sharply",
+    [
+      "slowly",
+      "sweetly"
+    ]
+  ],
+  [
+    "The forecast said it would stay ___.",
+    "dry",
+    [
+      "wet",
+      "loud"
+    ]
+  ],
+  [
+    "The humidity made the day feel ___.",
+    "muggy",
+    [
+      "crisp",
+      "frozen"
+    ]
+  ],
+  [
+    "The waves were too ___ to swim.",
+    "rough",
+    [
+      "calm",
+      "tiny"
+    ]
+  ],
+  [
+    "The fog made driving ___.",
+    "dangerous",
+    [
+      "easy",
+      "fun"
+    ]
+  ],
+  [
+    "The sun felt ___ on our skin.",
+    "warm",
+    [
+      "cold",
+      "bitter"
+    ]
+  ],
+  [
+    "The breeze was gentle and ___.",
+    "refreshing",
+    [
+      "heavy",
+      "stale"
+    ]
+  ],
+  [
+    "The storm passed ___ than expected.",
+    "quickly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The lake looked calm and ___.",
+    "peaceful",
+    [
+      "chaotic",
+      "spicy"
+    ]
+  ],
+  [
+    "The hike was ___ but worth it.",
+    "steep",
+    [
+      "flat",
+      "sweet"
+    ]
+  ],
+  [
+    "She speaks English very ___.",
+    "fluently",
+    [
+      "loud",
+      "heavy"
+    ]
+  ],
+  [
+    "He answered the question ___.",
+    "correctly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "They arrived ___ for the meeting.",
+    "late",
+    [
+      "early",
+      "never"
+    ]
+  ],
+  [
+    "She worked ___ to finish on time.",
+    "hard",
+    [
+      "soft",
+      "never"
+    ]
+  ],
+  [
+    "He drives too ___ in the city.",
+    "fast",
+    [
+      "slow",
+      "never"
+    ]
+  ],
+  [
+    "Please read the instructions ___.",
+    "carefully",
+    [
+      "never",
+      "loud"
+    ]
+  ],
+  [
+    "The team performed ___ under pressure.",
+    "well",
+    [
+      "bad",
+      "never"
+    ]
+  ],
+  [
+    "She smiled ___ when she saw him.",
+    "warmly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He spoke ___ so everyone could hear.",
+    "clearly",
+    [
+      "never",
+      "softly"
+    ]
+  ],
+  [
+    "They listened ___ to the teacher.",
+    "attentively",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She typed ___ to meet the deadline.",
+    "quickly",
+    [
+      "never",
+      "slowly"
+    ]
+  ],
+  [
+    "He apologized ___.",
+    "sincerely",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The baby slept ___ all night.",
+    "soundly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She dressed ___ for the cold weather.",
+    "warmly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He solved the puzzle ___.",
+    "easily",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "They celebrated ___ after the win.",
+    "wildly",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "She handled the situation ___.",
+    "gracefully",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He reacted ___ to the surprise.",
+    "calmly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The project moved ___ than planned.",
+    "slowly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She explained the rules ___.",
+    "simply",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He waited ___ for his turn.",
+    "patiently",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The door was ___ shut.",
+    "firmly",
+    [
+      "never",
+      "softly"
+    ]
+  ],
+  [
+    "She packed her bag ___.",
+    "lightly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He nodded ___ in agreement.",
+    "slowly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The music played too ___.",
+    "loudly",
+    [
+      "never",
+      "softly"
+    ]
+  ],
+  [
+    "She whispered ___ in the library.",
+    "quietly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He ran ___ to catch the bus.",
+    "quickly",
+    [
+      "never",
+      "slowly"
+    ]
+  ],
+  [
+    "They argued ___ about the plan.",
+    "heatedly",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "She laughed ___ at the joke.",
+    "loudly",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "He stared ___ at the screen.",
+    "blankly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The train arrived ___.",
+    "punctually",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She answered ___ without thinking.",
+    "hastily",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "He bowed ___ to the audience.",
+    "politely",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The story ended ___.",
+    "suddenly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She sang ___ at the concert.",
+    "beautifully",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He failed ___ on the first try.",
+    "miserably",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "They cooperated ___ on the task.",
+    "smoothly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The lights flickered ___.",
+    "briefly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She declined the offer ___.",
+    "politely",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He slammed the door ___.",
+    "angrily",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "The price rose ___ this year.",
+    "sharply",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She greeted us ___.",
+    "cheerfully",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He fell ___ on the icy steps.",
+    "hard",
+    [
+      "soft",
+      "never"
+    ]
+  ],
+  [
+    "The team lost ___ in the final.",
+    "badly",
+    [
+      "well",
+      "never"
+    ]
+  ],
+  [
+    "She improved ___ after practice.",
+    "rapidly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He slept ___ on the couch.",
+    "soundly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "They planned the trip ___.",
+    "carefully",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The child behaved ___ at dinner.",
+    "well",
+    [
+      "bad",
+      "never"
+    ]
+  ],
+  [
+    "She writes ___ in her journal.",
+    "daily",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He exercises ___ in the morning.",
+    "regularly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The bus comes ___ on weekdays.",
+    "hourly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She checks her email ___.",
+    "frequently",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He visits his parents ___.",
+    "monthly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "They meet ___ for coffee.",
+    "weekly",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The alarm rings ___ at six.",
+    "daily",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "She practices piano ___.",
+    "daily",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "He calls home ___.",
+    "often",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "The machine beeps ___.",
+    "constantly",
+    [
+      "never",
+      "quietly"
+    ]
+  ],
+  [
+    "She rarely eats ___ food.",
+    "fast",
+    [
+      "slow",
+      "never"
+    ]
+  ],
+  [
+    "He is ___ honest with his team.",
+    "always",
+    [
+      "never",
+      "sometimes"
+    ]
+  ],
+  [
+    "They ___ forget to lock the door.",
+    "sometimes",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "She ___ finishes her work early.",
+    "usually",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "He ___ arrives on time.",
+    "rarely",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "I ___ drink coffee in the evening.",
+    "never",
+    [
+      "always",
+      "often"
+    ]
+  ],
+  [
+    "We ___ go hiking on weekends.",
+    "often",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "She ___ checks her phone at night.",
+    "rarely",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "He is ___ ready before everyone else.",
+    "usually",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "They ___ agree on the first idea.",
+    "seldom",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "The store is ___ open on holidays.",
+    "never",
+    [
+      "always",
+      "often"
+    ]
+  ],
+  [
+    "She ___ volunteers at the shelter.",
+    "often",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "He ___ complains about the weather.",
+    "hardly",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "We ___ eat out during the week.",
+    "rarely",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "The teacher ___ gives extra homework.",
+    "never",
+    [
+      "always",
+      "often"
+    ]
+  ],
+  [
+    "She ___ remembers birthdays.",
+    "always",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "He ___ takes the bus to work.",
+    "usually",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "They ___ travel abroad for vacation.",
+    "occasionally",
+    [
+      "always",
+      "never"
+    ]
+  ],
+  [
+    "The test was ___ difficult than last week.",
+    "more",
+    [
+      "less",
+      "never"
+    ]
+  ],
+  [
+    "He runs ___ than he used to.",
+    "faster",
+    [
+      "slower",
+      "never"
+    ]
+  ],
+  [
+    "This book is ___ than the movie.",
+    "better",
+    [
+      "worse",
+      "never"
+    ]
+  ],
+  [
+    "The second attempt was ___ successful.",
+    "less",
+    [
+      "more",
+      "never"
+    ]
+  ],
+  [
+    "She feels ___ confident now.",
+    "more",
+    [
+      "less",
+      "never"
+    ]
+  ],
+  [
+    "The new model is ___ expensive.",
+    "less",
+    [
+      "more",
+      "never"
+    ]
+  ],
+  [
+    "He became ___ patient over time.",
+    "more",
+    [
+      "less",
+      "never"
+    ]
+  ],
+  [
+    "The path grew ___ as we climbed.",
+    "steeper",
+    [
+      "flatter",
+      "never"
+    ]
+  ],
+  [
+    "Her voice sounded ___ on the recording.",
+    "clearer",
+    [
+      "muddier",
+      "never"
+    ]
+  ],
+  [
+    "The problem seems ___ complicated now.",
+    "less",
+    [
+      "more",
+      "never"
+    ]
+  ],
+  [
+    "Winter here is ___ than I expected.",
+    "colder",
+    [
+      "warmer",
+      "never"
+    ]
+  ],
+  [
+    "He speaks ___ quietly than before.",
+    "more",
+    [
+      "less",
+      "never"
+    ]
+  ],
+  [
+    "The results were ___ surprising.",
+    "less",
+    [
+      "more",
+      "never"
+    ]
+  ],
+  [
+    "She works ___ hours than her roommate.",
+    "fewer",
+    [
+      "more",
+      "never"
+    ]
+  ],
+  [
+    "The hotel was ___ comfortable than home.",
+    "less",
+    [
+      "more",
+      "never"
+    ]
+  ],
+  [
+    "Traffic was ___ heavy this morning.",
+    "unusually",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "He is the ___ student in the class.",
+    "best",
+    [
+      "worst",
+      "never"
+    ]
+  ],
+  [
+    "This is the ___ day of the year.",
+    "longest",
+    [
+      "shortest",
+      "never"
+    ]
+  ],
+  [
+    "She gave the ___ performance of the night.",
+    "strongest",
+    [
+      "weakest",
+      "never"
+    ]
+  ],
+  [
+    "It was the ___ mistake he could make.",
+    "worst",
+    [
+      "best",
+      "never"
+    ]
+  ],
+  [
+    "That was the ___ news we could hear.",
+    "best",
+    [
+      "worst",
+      "never"
+    ]
+  ],
+  [
+    "He made the ___ decision under pressure.",
+    "bravest",
+    [
+      "weakest",
+      "never"
+    ]
+  ],
+  [
+    "This route is the ___ way downtown.",
+    "fastest",
+    [
+      "slowest",
+      "never"
+    ]
+  ],
+  [
+    "She is the ___ person I know.",
+    "kindest",
+    [
+      "rudest",
+      "never"
+    ]
+  ],
+  [
+    "It was the ___ storm in decades.",
+    "worst",
+    [
+      "best",
+      "never"
+    ]
+  ],
+  [
+    "He told the ___ joke at the party.",
+    "funniest",
+    [
+      "saddest",
+      "never"
+    ]
+  ],
+  [
+    "The ___ answer is usually the simplest.",
+    "right",
+    [
+      "wrong",
+      "never"
+    ]
+  ],
+  [
+    "She wore a ___ dress to the gala.",
+    "elegant",
+    [
+      "messy",
+      "loud"
+    ]
+  ],
+  [
+    "The instructions were ___ and easy to follow.",
+    "clear",
+    [
+      "confusing",
+      "loud"
+    ]
+  ],
+  [
+    "His explanation sounded ___ to everyone.",
+    "reasonable",
+    [
+      "absurd",
+      "loud"
+    ]
+  ],
+  [
+    "The evidence was ___ enough to convict.",
+    "strong",
+    [
+      "weak",
+      "loud"
+    ]
+  ],
+  [
+    "Her argument felt ___ and well supported.",
+    "convincing",
+    [
+      "weak",
+      "loud"
+    ]
+  ],
+  [
+    "The contract terms were ___ and fair.",
+    "transparent",
+    [
+      "hidden",
+      "loud"
+    ]
+  ],
+  [
+    "The meeting was ___ and productive.",
+    "brief",
+    [
+      "endless",
+      "loud"
+    ]
+  ],
+  [
+    "The joke was ___ but harmless.",
+    "cheesy",
+    [
+      "serious",
+      "loud"
+    ]
+  ],
+  [
+    "The room was ___ and poorly lit.",
+    "dim",
+    [
+      "bright",
+      "loud"
+    ]
+  ],
+  [
+    "The fabric felt ___ against her skin.",
+    "rough",
+    [
+      "smooth",
+      "loud"
+    ]
+  ],
+  [
+    "The surface was ___ and easy to clean.",
+    "smooth",
+    [
+      "rough",
+      "loud"
+    ]
+  ],
+  [
+    "The water looked ___ and inviting.",
+    "clear",
+    [
+      "muddy",
+      "loud"
+    ]
+  ],
+  [
+    "The paint color was too ___ for the room.",
+    "bold",
+    [
+      "subtle",
+      "loud"
+    ]
+  ],
+  [
+    "His tone sounded ___ during the argument.",
+    "harsh",
+    [
+      "gentle",
+      "loud"
+    ]
+  ],
+  [
+    "She gave ___ advice about saving money.",
+    "practical",
+    [
+      "useless",
+      "loud"
+    ]
+  ],
+  [
+    "The plan seemed ___ at first glance.",
+    "risky",
+    [
+      "safe",
+      "loud"
+    ]
+  ],
+  [
+    "The neighborhood felt ___ at night.",
+    "unsafe",
+    [
+      "secure",
+      "loud"
+    ]
+  ],
+  [
+    "The laptop was surprisingly ___.",
+    "light",
+    [
+      "heavy",
+      "loud"
+    ]
+  ],
+  [
+    "The backpack felt ___ with all the books.",
+    "heavy",
+    [
+      "light",
+      "loud"
+    ]
+  ],
+  [
+    "The suitcase was too ___ to lift alone.",
+    "heavy",
+    [
+      "light",
+      "loud"
+    ]
+  ],
+  [
+    "The box was ___ and easy to carry.",
+    "light",
+    [
+      "heavy",
+      "loud"
+    ]
+  ],
+  [
+    "The metal gate was ___ and rusted.",
+    "heavy",
+    [
+      "light",
+      "loud"
+    ]
+  ],
+  [
+    "The feather pillow felt ___.",
+    "soft",
+    [
+      "hard",
+      "loud"
+    ]
+  ],
+  [
+    "The wooden chair was ___ and sturdy.",
+    "solid",
+    [
+      "hollow",
+      "loud"
+    ]
+  ],
+  [
+    "The glass shattered into ___ pieces.",
+    "tiny",
+    [
+      "huge",
+      "loud"
+    ]
+  ],
+  [
+    "The rope was ___ enough to hold our weight.",
+    "strong",
+    [
+      "weak",
+      "loud"
+    ]
+  ],
+  [
+    "The bridge looked ___ after the earthquake.",
+    "unstable",
+    [
+      "steady",
+      "loud"
+    ]
+  ],
+  [
+    "The ladder felt ___ on the wet floor.",
+    "slippery",
+    [
+      "stable",
+      "loud"
+    ]
+  ],
+  [
+    "The password was too ___ to guess.",
+    "complex",
+    [
+      "simple",
+      "loud"
+    ]
+  ],
+  [
+    "The puzzle was surprisingly ___.",
+    "simple",
+    [
+      "complex",
+      "loud"
+    ]
+  ],
+  [
+    "The exam questions were ___ but fair.",
+    "challenging",
+    [
+      "trivial",
+      "loud"
+    ]
+  ],
+  [
+    "The lecture was ___ and hard to follow.",
+    "dense",
+    [
+      "light",
+      "loud"
+    ]
+  ],
+  [
+    "The article was ___ and well researched.",
+    "informative",
+    [
+      "empty",
+      "loud"
+    ]
+  ],
+  [
+    "The rumor turned out to be ___.",
+    "false",
+    [
+      "true",
+      "loud"
+    ]
+  ],
+  [
+    "The witness seemed ___ and credible.",
+    "honest",
+    [
+      "dishonest",
+      "loud"
+    ]
+  ],
+  [
+    "The apology sounded ___ and heartfelt.",
+    "genuine",
+    [
+      "fake",
+      "loud"
+    ]
+  ],
+  [
+    "The offer was too good to be ___.",
+    "true",
+    [
+      "false",
+      "loud"
+    ]
+  ],
+  [
+    "The story sounded ___ from the start.",
+    "fishy",
+    [
+      "solid",
+      "loud"
+    ]
+  ],
+  [
+    "The data looked ___ and reliable.",
+    "consistent",
+    [
+      "random",
+      "loud"
+    ]
+  ],
+  [
+    "The results were ___ with our theory.",
+    "consistent",
+    [
+      "contradictory",
+      "loud"
+    ]
+  ],
+  [
+    "The two versions were ___ different.",
+    "completely",
+    [
+      "slightly",
+      "never"
+    ]
+  ],
+  [
+    "The files are ___ identical.",
+    "nearly",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "The twins look ___ alike.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "The colors match ___ perfectly.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "He is ___ finished with the report.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "We are ___ out of time.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "She ___ forgot her keys again.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "The project is ___ complete.",
+    "nearly",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "I ___ missed the train by a minute.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "They ___ won the game in overtime.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "The battery is ___ dead.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "He ___ called me last night.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "The cake is ___ ready to serve.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "She ___ agreed before changing her mind.",
+    "almost",
+    [
+      "never",
+      "totally"
+    ]
+  ],
+  [
+    "The road is ___ closed for repairs.",
+    "temporarily",
+    [
+      "permanently",
+      "never"
+    ]
+  ],
+  [
+    "He is ___ employed at the company.",
+    "currently",
+    [
+      "formerly",
+      "never"
+    ]
+  ],
+  [
+    "They are ___ dating, not married.",
+    "just",
+    [
+      "already",
+      "never"
+    ]
+  ],
+  [
+    "She is ___ learning to drive.",
+    "still",
+    [
+      "already",
+      "never"
+    ]
+  ],
+  [
+    "He has ___ left for the airport.",
+    "already",
+    [
+      "still",
+      "never"
+    ]
+  ],
+  [
+    "We have ___ seen that movie.",
+    "already",
+    [
+      "still",
+      "never"
+    ]
+  ],
+  [
+    "She has ___ finished her homework.",
+    "not",
+    [
+      "already",
+      "still"
+    ]
+  ],
+  [
+    "They have ___ arrived yet.",
+    "not",
+    [
+      "already",
+      "still"
+    ]
+  ],
+  [
+    "He has ___ been to Japan before.",
+    "never",
+    [
+      "always",
+      "often"
+    ]
+  ],
+  [
+    "I have ___ tried sushi.",
+    "never",
+    [
+      "always",
+      "often"
+    ]
+  ],
+  [
+    "She has ___ lived in this city.",
+    "always",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "We have ___ been friends since childhood.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "He has ___ working here for five years.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "They have ___ waiting since noon.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "She has ___ studying all evening.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "I have ___ thinking about your offer.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "He has ___ looking for a new job.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "We have ___ planning this trip for months.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "She has ___ practicing for the recital.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "They have ___ arguing about money again.",
+    "been",
+    [
+      "gone",
+      "never"
+    ]
+  ],
+  [
+    "He ___ go to the gym if he has time.",
+    "might",
+    [
+      "must",
+      "will"
+    ]
+  ],
+  [
+    "She ___ be at home by now.",
+    "should",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "You ___ wear a helmet when cycling.",
+    "should",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "He ___ have left his phone in the car.",
+    "might",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "They ___ arrive before sunset.",
+    "could",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "We ___ finish this today if we hurry.",
+    "can",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "You ___ smoke in this building.",
+    "must",
+    [
+      "may",
+      "might"
+    ]
+  ],
+  [
+    "She ___ speak three languages fluently.",
+    "can",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "He ___ be tired after the flight.",
+    "must",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "I ___ help you with that later.",
+    "can",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "They ___ not know about the change yet.",
+    "might",
+    [
+      "must",
+      "will"
+    ]
+  ],
+  [
+    "You ___ be joking about that price.",
+    "must",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "She ___ have forgotten the appointment.",
+    "might",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "We ___ leave early to avoid traffic.",
+    "should",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "He ___ call you when he lands.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "I ___ let you know as soon as I hear.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "They ___ probably cancel if it rains.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "She said she ___ come to the party.",
+    "would",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "He promised he ___ pay you back.",
+    "would",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "We thought it ___ rain, but it did not.",
+    "would",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "If I were you, I ___ apologize.",
+    "would",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "Without practice, you ___ improve much.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "With enough sleep, you ___ feel better.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "Unless we hurry, we ___ miss the show.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "If it snows, school ___ close tomorrow.",
+    "might",
+    [
+      "must",
+      "never"
+    ]
+  ],
+  [
+    "Right now, they ___ watching the game.",
+    "are",
+    [
+      "were",
+      "never"
+    ]
+  ],
+  [
+    "At the moment, he ___ working from home.",
+    "is",
+    [
+      "was",
+      "never"
+    ]
+  ],
+  [
+    "Yesterday, she ___ very upset.",
+    "was",
+    [
+      "is",
+      "never"
+    ]
+  ],
+  [
+    "Last year, we ___ in a smaller apartment.",
+    "lived",
+    [
+      "live",
+      "never"
+    ]
+  ],
+  [
+    "When I was young, I ___ afraid of dogs.",
+    "was",
+    [
+      "am",
+      "never"
+    ]
+  ],
+  [
+    "By next month, they ___ moved in.",
+    "will",
+    [
+      "have",
+      "never"
+    ]
+  ],
+  [
+    "In an hour, the meeting ___ start.",
+    "will",
+    [
+      "has",
+      "never"
+    ]
+  ],
+  [
+    "Soon, the leaves ___ turn red.",
+    "will",
+    [
+      "have",
+      "never"
+    ]
+  ],
+  [
+    "Eventually, he ___ understand the joke.",
+    "will",
+    [
+      "might",
+      "never"
+    ]
+  ],
+  [
+    "The train ___ at platform three.",
+    "stops",
+    [
+      "stop",
+      "never"
+    ]
+  ],
+  [
+    "Water ___ at one hundred degrees Celsius.",
+    "boils",
+    [
+      "boil",
+      "never"
+    ]
+  ],
+  [
+    "The sun ___ in the east.",
+    "rises",
+    [
+      "rise",
+      "never"
+    ]
+  ],
+  [
+    "Birds ___ south in winter.",
+    "fly",
+    [
+      "swim",
+      "never"
+    ]
+  ],
+  [
+    "Plants need sunlight to ___.",
+    "grow",
+    [
+      "shrink",
+      "never"
+    ]
+  ],
+  [
+    "Children usually ___ quickly.",
+    "learn",
+    [
+      "forget",
+      "never"
+    ]
+  ],
+  [
+    "Good habits ___ time to build.",
+    "take",
+    [
+      "give",
+      "never"
+    ]
+  ],
+  [
+    "Honesty ___ trust in relationships.",
+    "builds",
+    [
+      "breaks",
+      "never"
+    ]
+  ],
+  [
+    "Lies often ___ more problems.",
+    "create",
+    [
+      "solve",
+      "never"
+    ]
+  ],
+  [
+    "Practice ___ skills over time.",
+    "improves",
+    [
+      "worsens",
+      "never"
+    ]
+  ],
+  [
+    "Sleep helps your body ___.",
+    "recover",
+    [
+      "break",
+      "never"
+    ]
+  ],
+  [
+    "Stress can ___ your health.",
+    "harm",
+    [
+      "help",
+      "never"
+    ]
+  ],
+  [
+    "Exercise can ___ your mood.",
+    "boost",
+    [
+      "lower",
+      "never"
+    ]
+  ],
+  [
+    "Music can ___ people together.",
+    "bring",
+    [
+      "push",
+      "never"
+    ]
+  ],
+  [
+    "A smile can ___ someone feel welcome.",
+    "make",
+    [
+      "break",
+      "never"
+    ]
+  ],
+  [
+    "Kind words can ___ a bad day.",
+    "save",
+    [
+      "ruin",
+      "never"
+    ]
+  ],
+  [
+    "Small steps can ___ to big changes.",
+    "lead",
+    [
+      "stop",
+      "never"
+    ]
+  ],
+  [
+    "Patience often ___ off in the end.",
+    "pays",
+    [
+      "fails",
+      "never"
+    ]
+  ],
+  [
+    "Hard work usually ___ results.",
+    "yields",
+    [
+      "hides",
+      "never"
+    ]
+  ],
+  [
+    "Teamwork makes goals easier to ___.",
+    "reach",
+    [
+      "miss",
+      "never"
+    ]
+  ],
+  [
+    "Clear goals help you stay ___.",
+    "focused",
+    [
+      "lost",
+      "loud"
+    ]
+  ],
+  [
+    "A budget helps you spend ___.",
+    "wisely",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "Reading expands your ___.",
+    "vocabulary",
+    [
+      "appetite",
+      "never"
+    ]
+  ],
+  [
+    "Listening is as important as ___.",
+    "speaking",
+    [
+      "eating",
+      "never"
+    ]
+  ],
+  [
+    "Feedback helps you ___ faster.",
+    "improve",
+    [
+      "worsen",
+      "never"
+    ]
+  ],
+  [
+    "Mistakes are chances to ___.",
+    "learn",
+    [
+      "quit",
+      "never"
+    ]
+  ],
+  [
+    "Curiosity keeps the mind ___.",
+    "active",
+    [
+      "idle",
+      "loud"
+    ]
+  ],
+  [
+    "Confidence grows with ___.",
+    "practice",
+    [
+      "luck",
+      "never"
+    ]
+  ],
+  [
+    "Respect is earned through ___.",
+    "actions",
+    [
+      "words",
+      "never"
+    ]
+  ],
+  [
+    "Trust takes years to ___.",
+    "build",
+    [
+      "break",
+      "never"
+    ]
+  ],
+  [
+    "Promises should be kept ___.",
+    "faithfully",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "Secrets are hard to ___ forever.",
+    "keep",
+    [
+      "tell",
+      "never"
+    ]
+  ],
+  [
+    "Truth is better than a comforting ___.",
+    "lie",
+    [
+      "fact",
+      "never"
+    ]
+  ],
+  [
+    "Silence can be ___ awkward.",
+    "painfully",
+    [
+      "never",
+      "loudly"
+    ]
+  ],
+  [
+    "Laughter is ___ contagious.",
+    "highly",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "The city was ___ crowded during the festival.",
+    "extremely",
+    [
+      "never",
+      "rarely"
+    ]
+  ],
+  [
+    "He spoke with ___ confidence.",
+    "remarkable",
+    [
+      "zero",
+      "never"
+    ]
+  ],
+  [
+    "She has an ___ memory for names.",
+    "excellent",
+    [
+      "terrible",
+      "never"
+    ]
+  ],
+  [
+    "The view from the hill was ___.",
+    "breathtaking",
+    [
+      "boring",
+      "never"
+    ]
+  ],
+  [
+    "The noise from the street was ___.",
+    "unbearable",
+    [
+      "pleasant",
+      "never"
+    ]
+  ],
+  [
+    "The hotel service was ___.",
+    "outstanding",
+    [
+      "terrible",
+      "never"
+    ]
+  ],
+  [
+    "His handwriting is nearly ___.",
+    "illegible",
+    [
+      "perfect",
+      "never"
+    ]
+  ],
+  [
+    "The puzzle solution was ___.",
+    "obvious",
+    [
+      "hidden",
+      "never"
+    ]
+  ],
+  [
+    "Her talent is truly ___.",
+    "remarkable",
+    [
+      "ordinary",
+      "never"
+    ]
+  ],
+  [
+    "The delay was completely ___.",
+    "unnecessary",
+    [
+      "helpful",
+      "never"
+    ]
+  ],
+  [
+    "The mistake was easily ___.",
+    "fixable",
+    [
+      "permanent",
+      "never"
+    ]
+  ],
+  [
+    "The problem is not ___ serious.",
+    "that",
+    [
+      "very",
+      "never"
+    ]
+  ],
+  [
+    "The answer was right in ___ of us.",
+    "front",
+    [
+      "back",
+      "never"
+    ]
+  ],
+  [
+    "She sat ___ me during the flight.",
+    "beside",
+    [
+      "under",
+      "never"
+    ]
+  ],
+  [
+    "The keys are ___ the table.",
+    "on",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He hid the gift ___ the bed.",
+    "under",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "They walked ___ the bridge at sunset.",
+    "across",
+    [
+      "into",
+      "never"
+    ]
+  ],
+  [
+    "We drove ___ the tunnel.",
+    "through",
+    [
+      "over",
+      "never"
+    ]
+  ],
+  [
+    "The cat jumped ___ the fence.",
+    "over",
+    [
+      "under",
+      "never"
+    ]
+  ],
+  [
+    "She walked ___ the room quietly.",
+    "into",
+    [
+      "onto",
+      "never"
+    ]
+  ],
+  [
+    "He stepped ___ the curb carefully.",
+    "off",
+    [
+      "onto",
+      "never"
+    ]
+  ],
+  [
+    "The picture hangs ___ the fireplace.",
+    "above",
+    [
+      "below",
+      "never"
+    ]
+  ],
+  [
+    "The village lies ___ the mountains.",
+    "beyond",
+    [
+      "inside",
+      "never"
+    ]
+  ],
+  [
+    "Stay ___ the line until I return.",
+    "on",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "The book fell ___ the shelf.",
+    "off",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "We met ___ the corner cafe.",
+    "at",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She lives ___ Paris now.",
+    "in",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "He works ___ a hospital.",
+    "at",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "They traveled ___ train.",
+    "by",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "I paid ___ credit card.",
+    "by",
+    [
+      "with",
+      "never"
+    ]
+  ],
+  [
+    "She cut the cake ___ a knife.",
+    "with",
+    [
+      "by",
+      "never"
+    ]
+  ],
+  [
+    "He opened the door ___ a key.",
+    "with",
+    [
+      "by",
+      "never"
+    ]
+  ],
+  [
+    "We succeeded ___ working together.",
+    "by",
+    [
+      "with",
+      "never"
+    ]
+  ],
+  [
+    "She is good ___ math.",
+    "at",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He is interested ___ history.",
+    "in",
+    [
+      "at",
+      "never"
+    ]
+  ],
+  [
+    "They are afraid ___ spiders.",
+    "of",
+    [
+      "for",
+      "never"
+    ]
+  ],
+  [
+    "She is proud ___ her team.",
+    "of",
+    [
+      "for",
+      "never"
+    ]
+  ],
+  [
+    "He is responsible ___ the project.",
+    "for",
+    [
+      "of",
+      "never"
+    ]
+  ],
+  [
+    "We are excited ___ the trip.",
+    "about",
+    [
+      "for",
+      "never"
+    ]
+  ],
+  [
+    "She apologized ___ being late.",
+    "for",
+    [
+      "about",
+      "never"
+    ]
+  ],
+  [
+    "He insisted ___ paying the bill.",
+    "on",
+    [
+      "for",
+      "never"
+    ]
+  ],
+  [
+    "They depend ___ each other.",
+    "on",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She specializes ___ graphic design.",
+    "in",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "He graduated ___ college last year.",
+    "from",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "We arrived ___ the airport early.",
+    "at",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She looked ___ her notes before the test.",
+    "over",
+    [
+      "under",
+      "never"
+    ]
+  ],
+  [
+    "He ran ___ an old friend downtown.",
+    "into",
+    [
+      "onto",
+      "never"
+    ]
+  ],
+  [
+    "They called ___ the meeting.",
+    "off",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "She gave ___ smoking last year.",
+    "up",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He turned ___ the job offer.",
+    "down",
+    [
+      "up",
+      "never"
+    ]
+  ],
+  [
+    "We ran ___ of milk this morning.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She grew ___ in a small town.",
+    "up",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He looked ___ his little sister.",
+    "after",
+    [
+      "before",
+      "never"
+    ]
+  ],
+  [
+    "They put ___ the concert until spring.",
+    "off",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "She came ___ a great idea.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "He broke ___ with his partner.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "We need to figure ___ a solution.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She pointed ___ the mistake.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He backed ___ from the argument.",
+    "away",
+    [
+      "into",
+      "never"
+    ]
+  ],
+  [
+    "They checked ___ of the hotel at noon.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She logged ___ to her account.",
+    "into",
+    [
+      "onto",
+      "never"
+    ]
+  ],
+  [
+    "He signed ___ for the workshop.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "We signed ___ early from work.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She tuned ___ the radio.",
+    "in",
+    [
+      "out",
+      "never"
+    ]
+  ],
+  [
+    "He phased ___ the old system.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "They brought ___ a new policy.",
+    "in",
+    [
+      "out",
+      "never"
+    ]
+  ],
+  [
+    "She carried ___ despite the setback.",
+    "on",
+    [
+      "off",
+      "never"
+    ]
+  ],
+  [
+    "He held ___ hope until the end.",
+    "onto",
+    [
+      "into",
+      "never"
+    ]
+  ],
+  [
+    "We hung ___ the phone too soon.",
+    "up",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "They ironed ___ their differences.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "The manager will look ___ your request.",
+    "into",
+    [
+      "onto",
+      "never"
+    ]
+  ],
+  [
+    "Please fill ___ this form.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "Do not give ___ on the first try.",
+    "up",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She takes ___ her mother in looks.",
+    "after",
+    [
+      "before",
+      "never"
+    ]
+  ],
+  [
+    "He ran ___ of patience.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "They set ___ on a long journey.",
+    "off",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "She spoke ___ against the policy.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He kept ___ interrupting me.",
+    "on",
+    [
+      "off",
+      "never"
+    ]
+  ],
+  [
+    "We looked ___ the old photos.",
+    "through",
+    [
+      "over",
+      "never"
+    ]
+  ],
+  [
+    "She brushed ___ on her Spanish.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "He passed ___ the flu to me.",
+    "on",
+    [
+      "off",
+      "never"
+    ]
+  ],
+  [
+    "They pulled ___ at the last minute.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She showed ___ at the party late.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "He let me ___ on a secret.",
+    "in",
+    [
+      "out",
+      "never"
+    ]
+  ],
+  [
+    "We teamed ___ for the project.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "She warmed ___ to the idea slowly.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "He zipped ___ his jacket.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "They zeroed ___ on the main issue.",
+    "in",
+    [
+      "out",
+      "never"
+    ]
+  ],
+  [
+    "The teacher asked us to hand ___ our papers.",
+    "in",
+    [
+      "out",
+      "never"
+    ]
+  ],
+  [
+    "He chickened ___ at the last second.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "She egged him ___ to sing.",
+    "on",
+    [
+      "off",
+      "never"
+    ]
+  ],
+  [
+    "We hashed ___ the details.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He lucked ___ and found a seat.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "They mopped ___ after the party.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "She nailed ___ the presentation.",
+    "it",
+    [
+      "them",
+      "never"
+    ]
+  ],
+  [
+    "He owned ___ to his mistake.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "We piggybacked ___ their success.",
+    "on",
+    [
+      "off",
+      "never"
+    ]
+  ],
+  [
+    "She queued ___ for tickets.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "He racked ___ a huge bill.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "They scaled ___ the mountain.",
+    "up",
+    [
+      "down",
+      "never"
+    ]
+  ],
+  [
+    "She talked him ___ of quitting.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ],
+  [
+    "He veered ___ from the topic.",
+    "off",
+    [
+      "on",
+      "never"
+    ]
+  ],
+  [
+    "We waded ___ the paperwork.",
+    "through",
+    [
+      "over",
+      "never"
+    ]
+  ],
+  [
+    "She yanked ___ the cord.",
+    "on",
+    [
+      "off",
+      "never"
+    ]
+  ],
+  [
+    "He zoned ___ during the lecture.",
+    "out",
+    [
+      "in",
+      "never"
+    ]
+  ]
+];
+
+const normalizeAnswer = value =>
+  String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '');
+
+const shuffleArray = items => {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+const formatOption = word => String(word || '').trim().toLowerCase();
+
+const pickQuestion = () => QUESTION_BANK[Math.floor(Math.random() * QUESTION_BANK.length)];
+
+const buildChallenge = () => {
+  const [sentence, correctWord, wrongWords] = pickQuestion();
+  const displayOptions = shuffleArray([
+    formatOption(correctWord),
+    ...wrongWords.map(formatOption),
+  ]);
+  return {
+    id: `cm_${Date.now()}_random`,
+    sentence,
+    options: displayOptions,
+    correct: normalizeAnswer(correctWord),
+  };
+};
+
+const serializeChallenge = challenge => ({
+  id: challenge.id,
+  sentence: challenge.sentence,
+  options: challenge.options,
+});
+
+const isCorrectAnswer = (challenge, answer) => {
+  const normalized = normalizeAnswer(answer);
+  if (!normalized || normalized.length < 2) {
+    return false;
+  }
+  return normalized === challenge.correct;
+};
+
+const pickBotAnswer = (challenge, shouldBeCorrect = true) => {
+  if (shouldBeCorrect) {
+    return (
+      challenge.options.find(opt => normalizeAnswer(opt) === challenge.correct) ||
+      formatOption(challenge.correct)
+    );
+  }
+  const wrong = challenge.options.filter(opt => normalizeAnswer(opt) !== challenge.correct);
+  if (wrong.length === 0) {
+    return challenge.options[0];
+  }
+  return wrong[Math.floor(Math.random() * wrong.length)];
+};
+
+const calcContextMasterExp = (finalScore, rank = 5) => {
+  const safeScore = Math.max(0, Number(finalScore) || 0);
+  const base = Math.floor(safeScore / 10);
+  const winBonus = rank === 1 ? 3 : rank === 2 ? 1 : 0;
+  return Math.max(safeScore > 0 ? 1 : 0, base + winBonus);
+};
+
+module.exports = {
+  QUESTION_COUNT: QUESTION_BANK.length,
+  MATCH_DURATION_MS: 5 * 60 * 1000,
+  POINTS_CORRECT: 15,
+  POINTS_WRONG: 5,
+  buildChallenge,
+  serializeChallenge,
+  isCorrectAnswer,
+  normalizeAnswer,
+  shuffleArray,
+  formatOption,
+  pickBotAnswer,
+  randomBotName,
+  calcContextMasterExp,
+};

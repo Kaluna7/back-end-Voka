@@ -1,0 +1,89 @@
+/** 5-letter Indonesian words (ASCII) for Sudoword. */
+const SUDOWORD_WORD_BANK = [
+  'KELAS',
+  'TAMAN',
+  'RUMAH',
+  'MAKAN',
+  'MINUM',
+  'MALAM',
+  'BESAR',
+  'KECIL',
+  'BUNGA',
+  'PINTU',
+  'JALAN',
+  'TEMAN',
+  'KANTO',
+  'HUTAN',
+  'PANTA',
+  'BUKIT',
+  'SENJA',
+  'PAGAR',
+  'MURID',
+  'SUBUH',
+  'HARAP',
+  'CERAH',
+  'HIJAU',
+  'PUTIH',
+].filter(word => word.length === 5);
+
+const SYNOWORD_BANK = [
+  { word: 'SENANG', synonyms: ['GIRANG', 'BAHAGIA', 'SUKA', 'GEMBIRA'] },
+  { word: 'SEDIH', synonyms: ['DUKA', 'MURUNG', 'MELANK', 'SUSAH'] },
+  { word: 'BESAR', synonyms: ['LUAS', 'LEBAR', 'TINGGI', 'BESAR'] },
+  { word: 'KECIL', synonyms: ['MINI', 'SEMPIT', 'PENDEK', 'MUNGIL'] },
+  { word: 'CEPAT', synonyms: ['KILAT', 'GESIT', 'LAJU', 'BURU'] },
+  { word: 'LAMBAT', synonyms: ['PELAN', 'TUNDA', 'TELAT', 'LEWAT'] },
+  { word: 'PANAS', synonyms: ['HANGAT', 'PANAS', 'GERAH', 'TERIK'] },
+  { word: 'DINGIN', synonyms: ['SEJUK', 'DINGIN', 'BEBEK', 'KERUH'] },
+  { word: 'CANTIK', synonyms: ['INDAH', 'ELOK', 'MENARIK', 'BAGUS'] },
+  { word: 'KUAT', synonyms: ['KUAT', 'TEGUH', 'KOKOH', 'BERANI'] },
+  { word: 'LEMAH', synonyms: ['LEMAH', 'RAPUH', 'LEMBUT', 'HALUS'] },
+  { word: 'BARU', synonyms: ['SEGAR', 'MUDA', 'MODERN', 'TERBARU'] },
+  { word: 'LAMA', synonyms: ['TUA', 'KUNO', 'USANG', 'KELUAR'] },
+  { word: 'MUDAH', synonyms: ['GAMPANG', 'RINGAN', 'JELAS', 'BASIC'] },
+  { word: 'SULIT', synonyms: ['SUSAH', 'KERAS', 'RUMIT', 'SULIT'] },
+  { word: 'DEKAT', synonyms: ['DEKAT', 'RAPAT', 'ERAT', 'SEKITAR'] },
+  { word: 'JAUH', synonyms: ['JAUH', 'RENGGA', 'ASING', 'LENYAP'] },
+  { word: 'BUKA', synonyms: ['BUKA', 'BEBAS', 'TERBUKA', 'LONGGAR'] },
+  { word: 'TUTUP', synonyms: ['TUTUP', 'RAPAT', 'TERKUNCI', 'PADAT'] },
+];
+
+const ANTOWORD_BANK = [
+  { word: 'SENANG', antonyms: ['SEDIH', 'DUKA', 'MURUNG'] },
+  { word: 'BESAR', antonyms: ['KECIL', 'MINI', 'MUNGIL'] },
+  { word: 'CEPAT', antonyms: ['LAMBAT', 'PELAN', 'TELAT'] },
+  { word: 'PANAS', antonyms: ['DINGIN', 'SEJUK', 'ADEM'] },
+  { word: 'BARU', antonyms: ['LAMA', 'TUA', 'USANG'] },
+  { word: 'MUDAH', antonyms: ['SULIT', 'SUSAH', 'RUMIT'] },
+  { word: 'KUAT', antonyms: ['LEMAH', 'RAPUH', 'LEMBUT'] },
+  { word: 'BUKA', antonyms: ['TUTUP', 'RAPAT', 'TERKUNCI'] },
+  { word: 'PAGI', antonyms: ['MALAM', 'SORE', 'PETANG'] },
+  { word: 'NAIK', antonyms: ['TURUN', 'JATUH', 'RUNTUH'] },
+  { word: 'MASUK', antonyms: ['KELUAR', 'PINDAH', 'LARI'] },
+  { word: 'CINTA', antonyms: ['BENCI', 'MARAH', 'JIJIK'] },
+  { word: 'BENAR', antonyms: ['SALAH', 'PALSU', 'BOHONG'] },
+  { word: 'PENUH', antonyms: ['KOSONG', 'HABIS', 'KURANG'] },
+  { word: 'BERSIH', antonyms: ['KOTOR', 'KUMUH', 'DEKI'] },
+];
+
+const STORY_BANK = [
+  {
+    title: 'Kopi pagi',
+    body: 'Saya minum kopi setiap pagi. Hari ini saya ketinggalan kereta dan terlambat. Di stasiun saya membuka buku catatan dan menulis ide untuk rapat. Kereta berikutnya datang terlambat dan rapat juga. Saya tertawa pelan karena stres tidak membantu.',
+  },
+  {
+    title: 'Surat dari rumah',
+    body: 'Sebuah surat dari nenek saya tiba pada Selasa yang hujan. Ada foto dan resep sup dari masa kecil. Malam itu saya memasak dan mengundang tetangga. Kami berbicara tentang kata-kata hangat dan saya berjanji akan berkunjung sebelum musim dingin.',
+  },
+  {
+    title: 'Presentasi pertama',
+    body: 'Saya tidak pernah berbicara di depan umum sampai tim memilih saya. Berminggu-minggu saya berlatih di ruang kosong. Di panggung tangan saya gemetar tetapi lelucon pertama membuat semua orang tertawa. Kepercayaan diri tumbuh kalimat demi kalimat. Seorang mahasiswa bilang penelitian terasa manusiawi.',
+  },
+];
+
+module.exports = {
+  SUDOWORD_WORD_BANK,
+  SYNOWORD_BANK,
+  ANTOWORD_BANK,
+  STORY_BANK,
+};

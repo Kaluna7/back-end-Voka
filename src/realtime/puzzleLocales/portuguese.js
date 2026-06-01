@@ -1,0 +1,96 @@
+/** 5-letter Portuguese words (ASCII, no accents) for Sudoword. */
+const SUDOWORD_WORD_BANK = [
+  'LIVRO',
+  'MUNDO',
+  'MAOS',
+  'VERDE',
+  'RADIO',
+  'PRATA',
+  'FOGO',
+  'AGUAS',
+  'FELIZ',
+  'RAPID',
+  'LENTO',
+  'CALOR',
+  'CHUVA',
+  'VENTO',
+  'MANHA',
+  'NOITE',
+  'FLORE',
+  'CIDAD',
+  'PORTA',
+  'TERRA',
+  'AMIGO',
+  'FESTA',
+  'ESCOL',
+  'CARRO',
+  'BARCO',
+  'CAMPO',
+  'PRAIA',
+  'TARDE',
+  'SONHO',
+  'CORPO',
+  'LUGAR',
+].filter(word => word.length === 5);
+
+const SYNOWORD_BANK = [
+  { word: 'FELIZ', synonyms: ['ALEGRE', 'CONTENT', 'RADIANT', 'GOZOSO'] },
+  { word: 'TRISTE', synonyms: ['TRISTE', 'MELANC', 'SOMBRIO', 'APENAD'] },
+  { word: 'GRANDE', synonyms: ['ENORME', 'VASTO', 'GIGANTE', 'MAIOR'] },
+  { word: 'PEQUENO', synonyms: ['MENOR', 'MINI', 'CURTO', 'BREVE'] },
+  { word: 'RAPIDO', synonyms: ['VELOZ', 'AGIL', 'PRESTO', 'RAPIDO'] },
+  { word: 'LENTO', synonyms: ['TARDIO', 'PAUSADO', 'CALMADO', 'DEMORA'] },
+  { word: 'QUENTE', synonyms: ['TIBIO', 'ARDENT', 'CALIDO', 'MORNO'] },
+  { word: 'FRIO', synonyms: ['GELADO', 'GLACIAL', 'FRESCO', 'FRIO'] },
+  { word: 'BONITO', synonyms: ['LINDO', 'BELLO', 'FORMOSO', 'GRACIO'] },
+  { word: 'FORTE', synonyms: ['ROBUSTO', 'POTENTE', 'SOLIDO', 'FIRME'] },
+  { word: 'FRACO', synonyms: ['FRAGIL', 'FLOJO', 'DELGAD', 'SUAVE'] },
+  { word: 'NOVO', synonyms: ['RECENTE', 'FRESCO', 'MODERNO', 'JOVEM'] },
+  { word: 'VELHO', synonyms: ['ANTIGO', 'PASSADO', 'USADO', 'VELHO'] },
+  { word: 'FACIL', synonyms: ['SIMPLES', 'CLARO', 'LEVE', 'FACIL'] },
+  { word: 'DIFICIL', synonyms: ['DURO', 'ARDUO', 'COMPLE', 'PESADO'] },
+  { word: 'PERTO', synonyms: ['PROXIMO', 'JUNTO', 'VIZINH', 'ADJACE'] },
+  { word: 'LONGE', synonyms: ['DISTANT', 'REMOTO', 'AUSENTE', 'LONGE'] },
+  { word: 'ABERTO', synonyms: ['LIBRE', 'ACESSO', 'PUBLICO', 'LIVRE'] },
+  { word: 'FECHADO', synonyms: ['FECHAD', 'BLOQUEA', 'SEALAD', 'PRIVAD'] },
+];
+
+const ANTOWORD_BANK = [
+  { word: 'FELIZ', antonyms: ['TRISTE', 'APENAD', 'SOMBRIO'] },
+  { word: 'GRANDE', antonyms: ['PEQUE', 'MENOR', 'CURTO'] },
+  { word: 'RAPIDO', antonyms: ['LENTO', 'TARDIO', 'PAUSADO'] },
+  { word: 'QUENTE', antonyms: ['FRIO', 'GELADO', 'FRESCO'] },
+  { word: 'NOVO', antonyms: ['VELHO', 'ANTIGO', 'USADO'] },
+  { word: 'FACIL', antonyms: ['DIFICIL', 'DURO', 'ARDUO'] },
+  { word: 'FORTE', antonyms: ['FRACO', 'FRAGIL', 'FLOJO'] },
+  { word: 'ABERTO', antonyms: ['FECHAD', 'BLOQUEA', 'SEALAD'] },
+  { word: 'DIA', antonyms: ['NOITE', 'TARDE', 'ESCURO'] },
+  { word: 'SUBIR', antonyms: ['DESCER', 'CAIR', 'BAIXAR'] },
+  { word: 'ENTRAR', antonyms: ['SAIR', 'FUGIR', 'ESCAPA'] },
+  { word: 'AMAR', antonyms: ['ODIAR', 'DETEST', 'ABORRE'] },
+  { word: 'VERDADE', antonyms: ['MENTIRA', 'FALSO', 'ENGANO'] },
+  { word: 'CHEIO', antonyms: ['VAZIO', 'HUECO', 'FALTA'] },
+  { word: 'LIMPO', antonyms: ['SUJO', 'MANCHAD', 'IMUNDO'] },
+];
+
+const STORY_BANK = [
+  {
+    title: 'O café da manhã',
+    body: 'Tomo café todas as manhãs. Hoje perdi o trem e cheguei atrasado. Na estação abri meu caderno e escrevi ideias para a reunião. O próximo trem chegou com atraso e a reunião também. Ri em silêncio porque o estresse não ajudou.',
+  },
+  {
+    title: 'Uma carta de casa',
+    body: 'Chegou uma carta da minha avó numa terça chuvosa. Trazia fotos e a receita de uma sopa da infância. Naquela noite cozinhei e chamei os vizinhos. Falamos de palavras calorosas e prometi visitar antes do inverno.',
+  },
+  {
+    title: 'A primeira apresentação',
+    body: 'Nunca falei em público até o time me escolher. Pratiquei em salas vazias por semanas. No palco minhas mãos tremeram mas a primeira piada fez todos rir. A confiança cresceu frase por frase. Um estudante disse que a pesquisa pareceu humana.',
+  },
+];
+
+module.exports = {
+  SUDOWORD_WORD_BANK,
+  SYNOWORD_BANK,
+  ANTOWORD_BANK,
+  STORY_BANK,
+};
