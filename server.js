@@ -13,6 +13,8 @@ const { loadCompanionCache } = require('./src/services/companionCatalogService')
 
 // Selalu 5000 (lihat .env). Fallback 5000 jika baris PORT di .env terhapus.
 const PORT = Number(process.env.PORT || 5000);
+// Production behind a reverse proxy: HOST=127.0.0.1 so the app is only reachable through it.
+const HOST = process.env.HOST || '0.0.0.0';
 
 const startServer = async () => {
   try {
@@ -43,8 +45,8 @@ const startServer = async () => {
       }
       throw error;
     });
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Moocha backend running on http://0.0.0.0:${PORT}`);
+    server.listen(PORT, HOST, () => {
+      console.log(`Moocha backend running on http://${HOST}:${PORT}`);
       if (process.env.VOICE_AGENT_PUBLIC_BASE_URL) {
         console.log(
           `Deepgram Voice Agent LLM gateway: ${process.env.VOICE_AGENT_PUBLIC_BASE_URL}/api/internal/voice-agent/chat/completions`,
