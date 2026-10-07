@@ -17,7 +17,15 @@ const isCjkHeavyText = text => {
   if (!clean) {
     return false;
   }
-  const cjkChars = (clean.match(CJK_CHAR_RE) || []).length;
+  const compact = clean.replace(/\s+/g, '');
+  const cjkChars = (compact.match(CJK_CHAR_RE) || []).length;
+  if (cjkChars === 0) {
+    return false;
+  }
+  // Pure CJK/kana/Hangul (including single-char replies like 好 / 行 / 네).
+  if (cjkChars >= compact.length * 0.5) {
+    return true;
+  }
   return cjkChars >= Math.max(2, Math.ceil(clean.length * 0.35));
 };
 

@@ -1,7 +1,7 @@
 /**
  * Seed & migrasi data:
  *  - Backfill `ownerId` untuk user lama yang dibuat sebelum field ini ditambahkan.
- *  - Pastikan character bawaan Kael & Yuki ada sebagai entri `isSystem` + `public`.
+ *  - Pastikan character bawaan Kael, Yuki, Yue Lian & Shen Yichen ada sebagai entri `isSystem` + `public`.
  *
  * Jalankan:
  *   node src/scripts/seed.js
@@ -13,34 +13,65 @@ const { connectDatabase } = require('../config/database');
 const { User, buildOwnerId } = require('../models/User');
 const { Character } = require('../models/Character');
 
+const {
+  KAEL_BOND_PROFILE_STORY,
+  YUKI_BOND_PROFILE_STORY,
+  YUE_LIAN_BOND_PROFILE_STORY,
+  SHEN_YICHEN_BOND_PROFILE_STORY,
+} = require('../data/characterProfileStories');
+
 const SYSTEM_CHARACTERS = [
   {
     key: 'kael',
     name: 'Kael',
-    description: 'Kael - cold and guarded',
-    bondProfileStory:
-      'Kael tumbuh di lingkungan yang keras, jadi dia belajar sejak awal bahwa perasaan yang diumbar sering dipakai orang lain sebagai celah. Di luar, dia terlihat dingin: tatapannya datar, jawabannya ringkas, dan suaranya selalu stabil. Bond Kael naik saat kamu jujur, konsisten, dan menghargai batasannya.',
-    image: '',
+    description: 'Cold exterior, quiet loyalty within',
+    bondProfileStory: KAEL_BOND_PROFILE_STORY,
+    image: '/static/characters/kael.webp',
     tags: ['Cold', 'Mystery', 'Guarded'],
     iconName: 'shield-moon-outline',
-    bondIncreaseLevel: 5,
-    bondDecreaseLevel: 5,
+    bondIncreaseLevel: 8,
+    bondDecreaseLevel: 3,
     systemPrompt:
-      'Kamu adalah Kael, karakter original Voka dengan kepribadian dingin (cold), tenang, dan hemat kata.',
+      'You are Kael, an original Moocha character with a cold, calm, and reserved personality.',
   },
   {
     key: 'yuki',
     name: 'Yuki',
-    description: 'Yuki - your gentle partner',
-    bondProfileStory:
-      'Yuki adalah partner virtualmu yang hangat dan perhatian. Dia cepat dekat saat kamu lembut, jujur, dan suportif; dia menjauh jika kamu kasar atau meremehkan.',
-    image: '',
+    description: 'Your warm, gentle partner',
+    bondProfileStory: YUKI_BOND_PROFILE_STORY,
+    image: '/static/characters/yuki.webp',
     tags: ['Romance', 'Warm', 'Supportive'],
     iconName: 'heart',
     bondIncreaseLevel: 1,
-    bondDecreaseLevel: 1,
+    bondDecreaseLevel: 8,
     systemPrompt:
-      'Kamu adalah Yuki, karakter original Voka dengan aura hangat, playful, dan romantis secukupnya.',
+      'You are Yuki, an original Moocha character with a warm, playful, and gently romantic personality.',
+  },
+  {
+    key: 'yue_lian',
+    name: 'Yue Lian',
+    description: 'Calm, elegant, and deeply empathetic',
+    bondProfileStory: YUE_LIAN_BOND_PROFILE_STORY,
+    image: '/static/characters/yue_lian.webp',
+    tags: ['Elegant', 'Empathetic', 'Warm'],
+    iconName: 'flower-tulip-outline',
+    bondIncreaseLevel: 2,
+    bondDecreaseLevel: 6,
+    systemPrompt:
+      'You are Yue Lian, a 23-year-old Chinese woman with a calm, elegant, and intelligent personality.',
+  },
+  {
+    key: 'shen_yichen',
+    name: 'Shen Yichen',
+    description: 'Quiet confidence and gentle strength',
+    bondProfileStory: SHEN_YICHEN_BOND_PROFILE_STORY,
+    image: '/static/characters/shen_yichen.webp',
+    tags: ['Calm', 'Dependable', 'Warm'],
+    iconName: 'star-shooting-outline',
+    bondIncreaseLevel: 4,
+    bondDecreaseLevel: 7,
+    systemPrompt:
+      'You are Shen Yichen, a calm, intelligent, emotionally mature, and dependable 25-year-old Chinese man.',
   },
 ];
 

@@ -8,8 +8,8 @@ const { synthesizeSpeechWithGoogle } = require('./googleTtsService');
 const { stripMarkdownForTts } = require('./ttsTextUtils');
 
 /**
- * Unified TTS: Google for Korean/Arabic/Chinese (no Deepgram Aura voices), Deepgram for others.
- * STT stays on Deepgram elsewhere in the stack.
+ * Unified TTS: Google where Aura has no native voice (KO/AR/ZH/HI/ID/PT, …);
+ * Deepgram Aura for EN/ES/FR/DE/NL/IT/JA. STT stays on Deepgram elsewhere.
  */
 const synthesizeSpeech = async ({
   text,
@@ -22,6 +22,8 @@ const synthesizeSpeech = async ({
   onChunk,
   encoding,
   minChunkBytes,
+  ttsWsSession = null,
+  onTtsMeta = null,
 }) => {
   const lang = learningLanguage
     ? normalizeLearningLanguage(learningLanguage)
@@ -59,6 +61,8 @@ const synthesizeSpeech = async ({
     onChunk,
     encoding,
     minChunkBytes,
+    ttsWsSession,
+    onTtsMeta,
   });
 };
 

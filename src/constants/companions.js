@@ -46,7 +46,7 @@ const COMPANION_PROFILES = {
     id: 'leo',
     name: 'Leo',
     type: 'teacher',
-    description: 'Interview & workplace English',
+    description: 'Job interviews & professional talk',
     prompt: getTeacherSystemPrompt('leo'),
   },
   'char-hinata': {

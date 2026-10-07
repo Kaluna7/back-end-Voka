@@ -28,11 +28,38 @@ const normalizeLearningLanguage = language => {
   return match || clean;
 };
 
-/** Google TTS only where Deepgram Aura has no voices (ko / ar / zh). */
-const GOOGLE_TTS_LANGUAGES = new Set(['Korean', 'Arabic', 'Chinese']);
+/**
+ * Deepgram Aura-2 TTS languages (native voices).
+ * Everything else in featuredLanguages uses Google Cloud TTS.
+ */
+const DEEPGRAM_AURA_TTS_LANGUAGES = new Set([
+  'English',
+  'Spanish',
+  'French',
+  'German',
+  'Dutch',
+  'Italian',
+  'Japanese',
+]);
 
-const usesGoogleTts = learningLanguage =>
-  GOOGLE_TTS_LANGUAGES.has(normalizeLearningLanguage(learningLanguage));
+/** No Aura voice (or no reliable native Aura): force Google TTS + legacy call path. */
+const GOOGLE_TTS_LANGUAGES = new Set([
+  'Korean',
+  'Arabic',
+  'Chinese',
+  'Hindi',
+  'Indonesian',
+  'Portuguese',
+]);
+
+const usesGoogleTts = learningLanguage => {
+  const lang = normalizeLearningLanguage(learningLanguage);
+  if (GOOGLE_TTS_LANGUAGES.has(lang)) {
+    return true;
+  }
+  // Unknown / custom languages: prefer Google unless Aura covers them.
+  return !DEEPGRAM_AURA_TTS_LANGUAGES.has(lang);
+};
 
 const isCjkLearningLanguage = learningLanguage => {
   const lang = normalizeLearningLanguage(learningLanguage);
@@ -47,6 +74,12 @@ const resolveGoogleTtsLanguageCode = learningLanguage => {
       return 'ar-XA';
     case 'Chinese':
       return 'cmn-CN';
+    case 'Hindi':
+      return 'hi-IN';
+    case 'Indonesian':
+      return 'id-ID';
+    case 'Portuguese':
+      return 'pt-BR';
     default:
       return 'en-US';
   }
@@ -65,7 +98,16 @@ const resolveGoogleTtsVoice = (learningLanguage, voiceVariant = 'default') => {
   if (lang === 'Chinese') {
     return useMale ? 'cmn-CN-Wavenet-B' : 'cmn-CN-Wavenet-A';
   }
-  return 'ko-KR-Neural2-A';
+  if (lang === 'Hindi') {
+    return useMale ? 'hi-IN-Wavenet-C' : 'hi-IN-Wavenet-A';
+  }
+  if (lang === 'Indonesian') {
+    return useMale ? 'id-ID-Wavenet-B' : 'id-ID-Wavenet-A';
+  }
+  if (lang === 'Portuguese') {
+    return useMale ? 'pt-BR-Neural2-B' : 'pt-BR-Neural2-A';
+  }
+  return 'en-US-Neural2-A';
 };
 
 const resolveDeepgramSttLanguage = learningLanguage => {
@@ -149,12 +191,7 @@ const resolveDeepgramTtsModel = (learningLanguage, voiceVariant = 'default') => 
   if (lang === 'Italian') {
     return masculine ? 'aura-2-dionisio-it' : 'aura-2-livia-it';
   }
-  if (lang === 'Indonesian') {
-    return masculine ? 'aura-2-orion-en' : 'aura-2-thalia-en';
-  }
-  if (lang === 'Hindi') {
-    return masculine ? 'aura-2-orion-en' : 'aura-2-thalia-en';
-  }
+  // Indonesian / Hindi / Portuguese / KO / AR / ZH use Google TTS (see usesGoogleTts).
   if (masculine) {
     return 'aura-2-orion-en';
   }
@@ -223,6 +260,7 @@ module.exports = {
   normalizeLearningLanguage,
   usesGoogleTts,
   isCjkLearningLanguage,
+  DEEPGRAM_AURA_TTS_LANGUAGES,
   GOOGLE_TTS_LANGUAGES,
   resolveGoogleTtsLanguageCode,
   resolveGoogleTtsVoice,

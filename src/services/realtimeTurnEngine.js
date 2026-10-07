@@ -7,9 +7,11 @@ const {
 } = require('./deepseekService');
 const { synthesizeSpeech } = require('./ttsService');
 const { prewarmDeepgramTts, resolveTtsFormat } = require('./deepgramService');
+const { prewarmGoogleTts } = require('./googleTtsService');
 const {
   resolveTtsModelForUser,
   resolveVoiceVariantForCompanion,
+  usesGoogleTts,
 } = require('../config/learningLanguage');
 const { stripMarkdownForTts, isSpeakableTtsText } = require('./ttsTextUtils');
 const {
@@ -19,6 +21,8 @@ const {
   meetsVoiceTriggerThreshold,
   takeCompletedSentences,
   CLAUSE_BREAK_RE,
+  isCjkHeavyText,
+  CJK_CHAR_RE,
 } = require('../utils/transcriptUnits');
 const { sanitizeTeacherCallPayload } = require('../utils/teacherCallAccess');
 const { isInterviewTeacherCompanionId } = require('../utils/interviewTeacherSetup');
@@ -33,41 +37,54 @@ const STT_FINALIZE_MS = Number(getEnv('VOICE_AI_STT_FINALIZE_MS', '0')) || 0;
 /** Grace after client input_end when transcript ends mid-phrase (but, the, for…). */
 const INCOMPLETE_INPUT_FINALIZE_MS =
   Number(getEnv('VOICE_AI_INCOMPLETE_INPUT_FINALIZE_MS', '600')) || 600;
+/** Interview (Leo): wait longer after input_end for trailing speech_final / STT merge. */
+const INTERVIEW_INCOMPLETE_INPUT_FINALIZE_MS =
+  Number(getEnv('VOICE_AI_INTERVIEW_INCOMPLETE_INPUT_FINALIZE_MS', '1800')) || 1800;
+/** Interview (Leo): brief tail after client PCM silence (input_end) for late STT only — not a second silence gate. */
+const INTERVIEW_STT_TAIL_MS = Number(getEnv('VOICE_AI_INTERVIEW_STT_TAIL_MS', '800')) || 800;
 const MIN_SPEECH_FINAL_CHARS = Number(getEnv('VOICE_AI_MIN_SPEECH_FINAL_CHARS', '2')) || 2;
 /** Only start after the client confirms real audio silence (input_end). Transcript silence is not enough. */
 const START_ON_PARTIAL = String(getEnv('VOICE_AI_START_ON_PARTIAL', 'false')).toLowerCase() === 'true';
 const START_ON_TRANSCRIPT_SILENCE =
   String(getEnv('VOICE_AI_START_ON_TRANSCRIPT_SILENCE', 'false')).toLowerCase() === 'true';
-/** Synthesize up to 2 TTS jobs in parallel (opener + remainder) for lower latency. */
-const MAX_TTS_CONCURRENCY = Math.max(1, Number(getEnv('VOICE_AI_TTS_CONCURRENCY', '2')) || 2);
+/** Ordered TTS queue — one active synth so WS/HTTP reuse stays hot and sentenceId order is preserved. */
+const MAX_TTS_CONCURRENCY = Math.max(1, Number(getEnv('VOICE_AI_TTS_CONCURRENCY', '1')) || 1);
 const MAX_TTS_SENTENCES = Math.max(3, Number(getEnv('VOICE_AI_MAX_TTS_SENTENCES', '4')) || 4);
-/** Max separate TTS synthesis jobs per AI turn (opener + remainder). */
-const MAX_TTS_JOBS_PER_TURN = Math.max(1, Number(getEnv('VOICE_AI_MAX_TTS_JOBS', '2')) || 2);
+/** Allow one TTS job per spoken phrase so openers are not blocked by a long batch. */
+const MAX_TTS_JOBS_PER_TURN = Math.max(
+  2,
+  Number(getEnv('VOICE_AI_MAX_TTS_JOBS', String(MAX_TTS_SENTENCES))) || MAX_TTS_SENTENCES,
+);
 /**
- * First-chunk-first voice turn: flush the first complete sentence to TTS immediately
- * while the LLM still streams, then batch the remainder at turn end. Up to
- * MAX_TTS_CONCURRENCY jobs run in parallel so chunk 2 is ready when chunk 1 plays.
+ * Flush a short opener phrase to TTS as soon as the LLM streams enough text.
+ * Remainder phrases enqueue as they complete — do not wait for the full reply.
  */
 const TTS_STREAM_FIRST_SENTENCE =
   String(getEnv('VOICE_AI_TTS_STREAM_FIRST_SENTENCE', 'true')).toLowerCase() === 'true';
 const VOICE_FILLER_ENABLED = String(getEnv('VOICE_AI_FILLER', 'false')).toLowerCase() === 'true';
 const VOICE_FILLER_TEXT = getEnv('VOICE_AI_FILLER_TEXT', 'Okay.');
-/** Only enqueue TTS on sentence-ending punctuation — avoids "Hey Kaluna," / "That's" micro-splits. */
+/** Legacy mid-stream early cut; opener path below is always on when TTS_STREAM_FIRST_SENTENCE. */
 const EARLY_TTS_ENABLED = String(getEnv('VOICE_AI_EARLY_TTS', 'false')).toLowerCase() === 'true';
 const EARLY_TTS_CHARS = Number(getEnv('VOICE_AI_EARLY_TTS_CHARS', '12')) || 12;
 /** Main realtime TTS should be small/containerized; raw linear16 causes long drains on slower voices. */
 const REALTIME_TTS_ENCODING = String(getEnv('VOICE_AI_REALTIME_TTS_ENCODING', 'mp3')).toLowerCase();
-/** Opener (sentence 0): mp3 for reliable mobile playback; minChunkBytes 0 still streams fast. */
+/** Opener (sentence 0): mp3 for reliable mobile playback. */
 const OPENER_TTS_ENCODING = String(getEnv('VOICE_AI_OPENER_TTS_ENCODING', 'mp3')).toLowerCase();
-/** Allow a short opener ("Hi Kaluna!") so the first audio can finish and play quickly. */
 const MIN_TTS_SENTENCE_WORDS = Number(getEnv('VOICE_AI_MIN_TTS_WORDS', '1')) || 1;
-/** Join multiple sentences into one TTS request for natural intonation (max MAX_TTS_SENTENCES). */
+/** Opener target: short natural phrase (~3–8 words) or first light/strong punctuation. */
+const OPENER_MIN_WORDS = Math.max(1, Number(getEnv('VOICE_AI_OPENER_MIN_WORDS', '2')) || 2);
+const OPENER_MAX_WORDS = Math.max(
+  OPENER_MIN_WORDS,
+  Number(getEnv('VOICE_AI_OPENER_MAX_WORDS', '8')) || 8,
+);
+/**
+ * Batch only applies AFTER the opener. Keep small so follow-up phrases still stream promptly.
+ */
 const TTS_PHRASE_BATCH = String(getEnv('VOICE_AI_TTS_PHRASE_BATCH', 'true')).toLowerCase() === 'true';
-/** Wait for full turn before TTS so every sentence is spoken once, in order. */
 const TTS_PHRASE_BATCH_MAX_WAIT_MS =
-  Number(getEnv('VOICE_AI_TTS_PHRASE_BATCH_MAX_WAIT_MS', '0')) || 0;
+  Number(getEnv('VOICE_AI_TTS_PHRASE_BATCH_MAX_WAIT_MS', '80')) || 80;
 const TTS_PHRASE_BATCH_SENTENCE_LIMIT =
-  Math.max(1, Number(getEnv('VOICE_AI_TTS_PHRASE_BATCH_SENTENCE_LIMIT', '4')) || 4);
+  Math.max(1, Number(getEnv('VOICE_AI_TTS_PHRASE_BATCH_SENTENCE_LIMIT', '2')) || 2);
 const STRONG_PUNCT_RE = /[.!?。！？]/;
 const COMPLETE_TTS_PHRASE_RE = /[.!?。！？]["')\]}]*$/;
 const FALLBACK_PROMPT = getEnv('VOICE_AI_EMPTY_TRANSCRIPT_FALLBACK', 'Hello?');
@@ -78,27 +95,38 @@ const logRealtimeTurn = (message, details = {}) => {
   console.log(`[realtime-turn] ${message}`, details);
 };
 
+const INCOMPLETE_WAIT_MAX_EXTENSIONS = Math.max(
+  1,
+  Number(getEnv('VOICE_AI_INCOMPLETE_WAIT_MAX_EXTENSIONS', '2')) || 2,
+);
+
 const meetsLlmTriggerThreshold = (clean, speechFinal) =>
   meetsVoiceTriggerThreshold(clean, {
     minWords: MIN_TRIGGER_WORDS,
-    minSpeechFinalChars: MIN_SPEECH_FINAL_CHARS,
+    // CJK often has 1–2 meaningful characters with no spaces.
+    minSpeechFinalChars: isCjkHeavyText(clean) ? 1 : MIN_SPEECH_FINAL_CHARS,
     speechFinal,
   });
 
 const meetsCommittedUserTurn = clean => {
-  if (!normalizeTranscript(clean)) {
+  const normalized = normalizeTranscript(clean);
+  if (!normalized) {
     return false;
   }
-  if (looksIncompleteTranscript(clean)) {
+  if (looksIncompleteTranscript(normalized)) {
     return false;
   }
-  if (meetsLlmTriggerThreshold(clean, true)) {
+  if (meetsLlmTriggerThreshold(normalized, true)) {
     return true;
   }
-  const words = countWords(clean);
+  // After mic stop, accept short CJK replies (好 / 行 / 네 / うん).
+  if (isCjkHeavyText(normalized)) {
+    return (normalized.match(CJK_CHAR_RE) || []).length >= 1;
+  }
+  const words = countWords(normalized);
   if (words >= 1 && words < MIN_TRIGGER_WORDS) {
     return /^(yes|no|yeah|yep|nope|ok|okay|sure|right|exactly|maybe|thanks|thank you)\.?$/i.test(
-      normalizeTranscript(clean),
+      normalized,
     );
   }
   return false;
@@ -120,6 +148,60 @@ const takeEarlyTtsChunk = text => {
   }
   return { chunk: '', rest: source };
 };
+
+/**
+ * Latency-first opener: take a short natural phrase (~3–8 words) as soon as possible.
+ * Prefers sentence-end / light punctuation; falls back to a hard word cap.
+ */
+const takeOpenerTtsChunk = text => {
+  const source = String(text || '').trim();
+  if (!source) {
+    return { chunk: '', rest: '' };
+  }
+
+  const strong = takeStrongSentenceChunk(source);
+  if (strong?.chunk) {
+    const words = countWords(strong.chunk);
+    if (words >= 1 && words <= OPENER_MAX_WORDS + 2) {
+      return strong;
+    }
+  }
+
+  const clause = source.match(CLAUSE_BREAK_RE);
+  if (clause?.[1]) {
+    const chunk = clause[1].trim();
+    const words = countWords(chunk);
+    if (words >= OPENER_MIN_WORDS && words <= OPENER_MAX_WORDS + 2) {
+      return { chunk, rest: source.slice(clause[0].length).trimStart() };
+    }
+  }
+
+  const tokens = source.split(/\s+/).filter(Boolean);
+  if (tokens.length < OPENER_MIN_WORDS) {
+    return { chunk: '', rest: source };
+  }
+  if (tokens.length < OPENER_MAX_WORDS) {
+    // Not enough for a hard cut and no punctuation yet — wait for more stream.
+    return { chunk: '', rest: source };
+  }
+
+  let end = OPENER_MAX_WORDS;
+  while (end > OPENER_MIN_WORDS) {
+    const last = tokens[end - 1].toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+    if (!INCOMPLETE_TRANSCRIPT_ENDINGS.has(last)) {
+      break;
+    }
+    end -= 1;
+  }
+  const chunk = tokens.slice(0, end).join(' ').trim();
+  if (!chunk || !isSpeakableTtsText(chunk)) {
+    return { chunk: '', rest: source };
+  }
+  return { chunk, rest: tokens.slice(end).join(' ').trimStart() };
+};
+
+const msBetween = (from, to = Date.now()) =>
+  typeof from === 'number' && from > 0 ? Math.max(0, to - from) : null;
 
 const voiceFillerCache = new Map();
 
@@ -264,6 +346,17 @@ const isSameUtteranceRevision = (prev, next) => {
 const pickBestTranscriptVariant = (prev, next) => {
   const prevWords = countWords(prev);
   const nextWords = countWords(next);
+  const shrinkThreshold = Math.max(4, Math.floor(prevWords * 0.72));
+  if (
+    prevWords > 0 &&
+    nextWords > 0 &&
+    nextWords < prevWords &&
+    nextWords < shrinkThreshold &&
+    (normalizeTranscriptForCompare(prev).includes(normalizeTranscriptForCompare(next)) ||
+      isSameUtteranceGrowth(prev, next))
+  ) {
+    return prev;
+  }
   if (Math.abs(prevWords - nextWords) <= 2) {
     const prevHasPunct = /[.!?]["')\]}]*$/.test(prev.trim());
     const nextHasPunct = /[.!?]["')\]}]*$/.test(next.trim());
@@ -322,6 +415,17 @@ const mergeTurnTranscript = (previous, incoming) => {
   const stitched = stitchTranscriptFragments(prev, next);
   if (stitched) {
     return stitched;
+  }
+  if (
+    INCOMPLETE_TRANSCRIPT_ENDINGS.has(lastPrev) &&
+    nextWords.length >= 3 &&
+    !/[.!?]["')\]}]*$/.test(prev.trim())
+  ) {
+    const tailAnchor = prevWords.slice(Math.max(0, prevWords.length - 4));
+    const sharesAnchor = tailAnchor.some(w => nextWords.includes(w));
+    if (sharesAnchor || nextClean.length > prev.length * 0.35) {
+      return `${prev} ${nextClean}`.replace(/\s+/g, ' ').trim();
+    }
   }
   return pickBestTranscriptVariant(prev, next);
 };
@@ -453,6 +557,16 @@ const INCOMPLETE_TRANSCRIPT_ENDINGS = new Set([
   'want',
   'need',
   'like',
+  'then',
+  'already',
+  'there',
+  'due',
+  'your',
+  'come',
+  'create',
+  'project',
+  'interested',
+  'interesting',
 ]);
 
 const NOISE_ONLY_TRANSCRIPTS = new Set([
@@ -464,17 +578,31 @@ const NOISE_ONLY_TRANSCRIPTS = new Set([
 ]);
 
 const looksIncompleteTranscript = text => {
-  const words = transcriptWords(text);
+  const clean = normalizeTranscript(text);
+  if (!clean) {
+    return true;
+  }
+  // Chinese / Japanese / Korean: no spaces. Do not treat short CJK tokens as English fragments.
+  if (isCjkHeavyText(clean)) {
+    return (clean.match(CJK_CHAR_RE) || []).length < 1;
+  }
+  const words = transcriptWords(clean);
   if (words.length === 0) {
     return true;
   }
   const last = words[words.length - 1];
+  if (last.length <= 1) {
+    return true;
+  }
   if (INCOMPLETE_TRANSCRIPT_ENDINGS.has(last)) {
     return true;
   }
-  const normalized = normalizeTranscript(text);
-  return /\b(i am|i'm|talk about|what about|because of|my feeling are|i feel because|it is because|do you|do you have|do you have the|what do you|can you|could you|would you|if you don't|if you dont|are you hoping|what country are you hoping)$/i.test(normalized);
+  return /\b(i am|i'm|talk about|what about|and then|interesting in your|because of|my feeling are|i feel because|it is because|do you|do you have|do you have the|what do you|can you|could you|would you|if you don't|if you dont|are you hoping|what country are you hoping)$/i.test(
+    clean,
+  );
 };
+
+const interviewFinalizeDelayMs = () => INTERVIEW_STT_TAIL_MS;
 
 const completeFinalTtsTail = text => {
   const clean = normalizeTtsPhrase(text);
@@ -538,6 +666,7 @@ class RealtimeTurnEngine {
     pronunciations = [],
     voiceVariant,
     callChatTopic = null,
+    ttsWsSession = null,
   }) {
     this.sessionId = sessionId;
     this.send = send;
@@ -553,13 +682,16 @@ class RealtimeTurnEngine {
     this.ttsModel = resolveTtsModelForUser(user, ttsModel, this.voiceVariant);
     this.ttsSpeed = ttsSpeed;
     this.pronunciations = Array.isArray(pronunciations) ? pronunciations : [];
+    this.ttsWsSession = ttsWsSession || null;
 
     this.latestTranscript = '';
+    this.turnPeakTranscript = '';
     this.lastTurnCompleteNotifyAt = 0;
     this.lastTurnCompleteDelayMs = Infinity;
     this.started = false;
     this.inputEnded = false;
     this.userTurnCommitted = false;
+    this.incompleteWaitExtensions = 0;
     this.turnId = 0;
     this.triggerTimer = null;
     this.abortController = null;
@@ -581,6 +713,7 @@ class RealtimeTurnEngine {
     this.earlyTtsSent = false;
     this.ttsStartedNotified = false;
     this.openerTtsChunkStarted = false;
+    this.openerTtsStarted = false;
     this.fillerSent = false;
     this.turnDoneSent = false;
     this.ttsPendingBuffer = '';
@@ -592,6 +725,12 @@ class RealtimeTurnEngine {
     this.noiseOnlyTurn = false;
     this.lastTurnCompleteNotifyAt = 0;
     this.lastTurnCompleteDelayMs = Infinity;
+    this.speechFinalAt = 0;
+    this.llmStartedAt = 0;
+    this.firstLlmTextAt = 0;
+    this.firstTtsRequestAt = 0;
+    this.firstAudioAt = 0;
+    this.latencyLogged = false;
   }
 
   setBotSpeaking(active) {
@@ -649,9 +788,11 @@ class RealtimeTurnEngine {
       this.abortController = null;
     }
     this.latestTranscript = '';
+    this.turnPeakTranscript = '';
     this.started = false;
     this.inputEnded = false;
     this.userTurnCommitted = false;
+    this.incompleteWaitExtensions = 0;
     this.activeTurnId = null;
     this.completedText = '';
     this.ttsQueue = [];
@@ -667,6 +808,7 @@ class RealtimeTurnEngine {
     this.earlyTtsSent = false;
     this.ttsStartedNotified = false;
     this.openerTtsChunkStarted = false;
+    this.openerTtsStarted = false;
     this.fillerSent = false;
     this.turnDoneSent = false;
     this.ttsPendingBuffer = '';
@@ -675,6 +817,12 @@ class RealtimeTurnEngine {
     this.lastStagedTtsText = '';
     this.lastTranscriptAt = 0;
     this.noiseOnlyTurn = false;
+    this.speechFinalAt = 0;
+    this.llmStartedAt = 0;
+    this.firstLlmTextAt = 0;
+    this.firstTtsRequestAt = 0;
+    this.firstAudioAt = 0;
+    this.latencyLogged = false;
     return true;
   }
 
@@ -693,11 +841,18 @@ class RealtimeTurnEngine {
     this.earlyTtsSent = false;
     this.ttsStartedNotified = false;
     this.openerTtsChunkStarted = false;
+    this.openerTtsStarted = false;
     this.fillerSent = false;
     this.ttsPendingBuffer = '';
     this.llmEmittedLength = 0;
     this.ttsPhraseBatch = [];
     this.lastStagedTtsText = '';
+    this.speechFinalAt = 0;
+    this.llmStartedAt = 0;
+    this.firstLlmTextAt = 0;
+    this.firstTtsRequestAt = 0;
+    this.firstAudioAt = 0;
+    this.latencyLogged = false;
     this.lastTranscriptAt = 0;
     this.noiseOnlyTurn = false;
     if (this.silenceTakeoverTimer) {
@@ -743,7 +898,46 @@ class RealtimeTurnEngine {
     }
   }
 
+  updateTurnPeakTranscript() {
+    if (!isInterviewTeacherCompanionId(this.companionId)) {
+      return;
+    }
+    const latest = normalizeTranscript(this.latestTranscript);
+    const peak = normalizeTranscript(this.turnPeakTranscript);
+    if (!latest) {
+      return;
+    }
+    if (!peak || countWords(latest) > countWords(peak)) {
+      this.turnPeakTranscript = latest;
+      return;
+    }
+    if (
+      latest.length > peak.length &&
+      (isSameUtteranceGrowth(latest, peak) || isLikelyFinalRevision(latest, peak))
+    ) {
+      this.turnPeakTranscript = latest;
+    }
+  }
+
+  resolveInterviewPrompt() {
+    const latest = normalizeTranscript(this.latestTranscript);
+    const peak = normalizeTranscript(this.turnPeakTranscript);
+    if (!peak && !latest) {
+      return '';
+    }
+    if (!peak) {
+      return dedupeStackedTranscript(latest);
+    }
+    if (!latest || peak === latest) {
+      return dedupeStackedTranscript(peak);
+    }
+    return dedupeStackedTranscript(pickBestTranscriptVariant(peak, latest));
+  }
+
   notifyClientTurnComplete(reason, delayMs = 0) {
+    if (isInterviewTeacherCompanionId(this.companionId)) {
+      return;
+    }
     if (this.destroyed || this.botSpeaking || this.started || this.inputEnded) {
       return;
     }
@@ -760,6 +954,9 @@ class RealtimeTurnEngine {
     }
     this.lastTurnCompleteNotifyAt = now;
     this.lastTurnCompleteDelayMs = delayMs;
+    if (!this.speechFinalAt) {
+      this.speechFinalAt = now;
+    }
     logRealtimeTurn('notify client turn complete', {
       sessionId: this.sessionId,
       reason,
@@ -795,7 +992,23 @@ class RealtimeTurnEngine {
       return;
     }
     this.noiseOnlyTurn = false;
-    this.latestTranscript = dedupeStackedTranscript(mergeTurnTranscript(this.latestTranscript, clean));
+    const prevTranscript = this.latestTranscript;
+    const merged = dedupeStackedTranscript(mergeTurnTranscript(prevTranscript, clean));
+    const prevWords = countWords(prevTranscript);
+    const mergedWords = countWords(merged);
+    if (
+      isInterviewTeacherCompanionId(this.companionId) &&
+      !this.started &&
+      prevWords > 0 &&
+      mergedWords < prevWords &&
+      mergedWords < Math.max(4, Math.floor(prevWords * 0.72)) &&
+      !isSameUtteranceGrowth(merged, prevTranscript)
+    ) {
+      this.latestTranscript = normalizeTranscript(this.turnPeakTranscript) || prevTranscript;
+    } else {
+      this.latestTranscript = merged;
+    }
+    this.updateTurnPeakTranscript();
     this.lastTranscriptAt = Date.now();
     const wordCount = countWords(this.latestTranscript);
     if (
@@ -875,6 +1088,9 @@ class RealtimeTurnEngine {
       meetsLlmTriggerThreshold(turnTranscript, true) &&
       !looksIncompleteTranscript(turnTranscript)
     ) {
+      if (isInterviewTeacherCompanionId(this.companionId)) {
+        return;
+      }
       if (this.stablePartialTimer) {
         clearTimeout(this.stablePartialTimer);
         this.stablePartialTimer = null;
@@ -939,11 +1155,17 @@ class RealtimeTurnEngine {
           sessionId: this.sessionId,
           transcript: turnTranscript,
         });
-        this.scheduleLlmAfterSilence(Math.max(STT_FINALIZE_MS, 300), { trustSilence: true });
+        const revisionWait = isInterviewTeacherCompanionId(this.companionId)
+          ? interviewFinalizeDelayMs()
+          : Math.max(STT_FINALIZE_MS, 300);
+        this.scheduleLlmAfterSilence(revisionWait, { trustSilence: true });
         return;
       }
       this.userTurnCommitted = true;
-      this.scheduleLlmAfterSilence(0);
+      if (isInterviewTeacherCompanionId(this.companionId)) {
+        return;
+      }
+      this.scheduleLlmAfterSilence(0, { trustSilence: true });
       return;
     }
 
@@ -957,9 +1179,14 @@ class RealtimeTurnEngine {
         clearTimeout(this.triggerTimer);
         this.triggerTimer = null;
       }
-      const finalizeDelay = looksIncompleteTranscript(this.latestTranscript)
-        ? Math.max(STT_FINALIZE_MS, INCOMPLETE_INPUT_FINALIZE_MS)
-        : STT_FINALIZE_MS;
+      const incompleteWait = isInterviewTeacherCompanionId(this.companionId)
+        ? INTERVIEW_INCOMPLETE_INPUT_FINALIZE_MS
+        : INCOMPLETE_INPUT_FINALIZE_MS;
+      const finalizeDelay = isInterviewTeacherCompanionId(this.companionId)
+        ? interviewFinalizeDelayMs()
+        : looksIncompleteTranscript(this.latestTranscript)
+          ? Math.max(STT_FINALIZE_MS, incompleteWait)
+          : STT_FINALIZE_MS;
       logRealtimeTurn('reschedule llm after late transcript fragment', {
         sessionId: this.sessionId,
         transcript: this.latestTranscript,
@@ -1068,11 +1295,21 @@ class RealtimeTurnEngine {
       if (this.destroyed || this.started || this.botSpeaking) {
         return;
       }
-      const latest = normalizeTranscript(this.latestTranscript);
+      let latest = normalizeTranscript(this.latestTranscript);
       if (!latest) {
         return;
       }
+      if (isInterviewTeacherCompanionId(this.companionId)) {
+        this.updateTurnPeakTranscript();
+        latest = this.resolveInterviewPrompt();
+        if (latest && latest !== this.latestTranscript) {
+          this.latestTranscript = latest;
+        }
+      }
+      const interviewTrustInputEnd =
+        isInterviewTeacherCompanionId(this.companionId) && trustSilence && this.inputEnded;
       if (
+        !interviewTrustInputEnd &&
         latest !== snapshot &&
         !(trustSilence && (isSameUtteranceGrowth(latest, snapshot) || isLikelyFinalRevision(latest, snapshot)))
       ) {
@@ -1080,13 +1317,32 @@ class RealtimeTurnEngine {
       }
       if (trustSilence) {
         if (!meetsCommittedUserTurn(latest)) {
-          if (!(this.inputEnded && countWords(latest) >= MIN_TRIGGER_WORDS)) {
+          if (looksIncompleteTranscript(latest) && !isInterviewTeacherCompanionId(this.companionId)) {
+            this.incompleteWaitExtensions = (this.incompleteWaitExtensions || 0) + 1;
+            if (this.incompleteWaitExtensions <= INCOMPLETE_WAIT_MAX_EXTENSIONS) {
+              logRealtimeTurn('input_end wait extended, transcript still incomplete', {
+                sessionId: this.sessionId,
+                transcript: latest,
+                extraWaitMs: INCOMPLETE_INPUT_FINALIZE_MS,
+                extensions: this.incompleteWaitExtensions,
+              });
+              this.scheduleLlmAfterSilence(INCOMPLETE_INPUT_FINALIZE_MS, { trustSilence: true });
+              return;
+            }
+            logRealtimeTurn('input_end incomplete wait exhausted, forcing llm', {
+              sessionId: this.sessionId,
+              transcript: latest,
+              extensions: this.incompleteWaitExtensions,
+            });
+          } else if (
+            !(
+              this.inputEnded &&
+              (countTranscriptUnits(latest) >= Math.min(2, MIN_TRIGGER_WORDS) ||
+                countWords(latest) >= MIN_TRIGGER_WORDS)
+            )
+          ) {
             return;
           }
-          logRealtimeTurn('proceed after input_end timeout despite incomplete tail', {
-            sessionId: this.sessionId,
-            transcript: latest,
-          });
         }
       } else if (!meetsLlmTriggerThreshold(latest, true) || looksIncompleteTranscript(latest)) {
         return;
@@ -1118,7 +1374,9 @@ class RealtimeTurnEngine {
     if (this.started && !force) {
       return;
     }
-    const prompt = dedupeStackedTranscript(this.latestTranscript);
+    const prompt = isInterviewTeacherCompanionId(this.companionId)
+      ? this.resolveInterviewPrompt()
+      : dedupeStackedTranscript(this.latestTranscript);
     if (!prompt) {
       if (force) {
         logRealtimeTurn('empty turn', { sessionId: this.sessionId });
@@ -1149,6 +1407,7 @@ class RealtimeTurnEngine {
     this.earlyTtsSent = false;
     this.ttsStartedNotified = false;
     this.openerTtsChunkStarted = false;
+    this.openerTtsStarted = false;
     this.fillerSent = false;
     this.turnDoneSent = false;
     this.ttsPendingBuffer = '';
@@ -1160,8 +1419,20 @@ class RealtimeTurnEngine {
       this.ttsPhraseBatchTimer = null;
     }
     this.turnStartedAt = Date.now();
+    this.llmStartedAt = this.turnStartedAt;
+    if (!this.speechFinalAt) {
+      this.speechFinalAt = this.turnStartedAt;
+    }
+    this.firstLlmTextAt = 0;
+    this.firstTtsRequestAt = 0;
+    this.firstAudioAt = 0;
+    this.latencyLogged = false;
 
-    prewarmDeepgramTts(this.ttsModel).catch(() => {});
+    if (usesGoogleTts(this.targetLanguage)) {
+      prewarmGoogleTts(this.targetLanguage, this.voiceVariant).catch(() => {});
+    } else {
+      prewarmDeepgramTts(this.ttsModel).catch(() => {});
+    }
     this.maybeSendFillerAudio(turnId).catch(() => {});
 
     this.send({
@@ -1184,6 +1455,7 @@ class RealtimeTurnEngine {
       sessionId: this.sessionId,
       turnId,
       promptWords: countWords(prompt),
+      msFromSpeechFinalToLlmStart: msBetween(this.speechFinalAt, this.llmStartedAt),
     });
     fullReply = await requestDeepseekReplyStreaming({
       message: prompt,
@@ -1203,6 +1475,15 @@ class RealtimeTurnEngine {
       onDelta: text => {
         if (this.destroyed || this.activeTurnId !== turnId) {
           return;
+        }
+        if (!this.firstLlmTextAt && String(text || '').trim() && String(text || '').trim() !== '…') {
+          this.firstLlmTextAt = Date.now();
+          logRealtimeTurn('llm first text', {
+            sessionId: this.sessionId,
+            turnId,
+            msFromLlmStartToFirstText: msBetween(this.llmStartedAt, this.firstLlmTextAt),
+            preview: String(text).slice(0, 48),
+          });
         }
         this.send({
           type: 'ai_partial',
@@ -1364,29 +1645,38 @@ class RealtimeTurnEngine {
       });
       return;
     }
-    if (!TTS_PHRASE_BATCH) {
-      this.enqueueTts(turnId, text, { priority: !this.firstTtsChunkSent });
+
+    this.stagedSentenceCount += 1;
+
+    // Opener: never batch — enqueue the first short phrase immediately.
+    if (!this.firstTtsChunkSent) {
+      logRealtimeTurn('tts opener phrase ready', {
+        sessionId: this.sessionId,
+        turnId,
+        words: countWords(text),
+        text,
+        msFromLlmStartToFirstText: msBetween(this.llmStartedAt, this.firstLlmTextAt),
+        msFromFirstTextToTtsRequest: this.firstLlmTextAt
+          ? msBetween(this.firstLlmTextAt)
+          : msBetween(this.llmStartedAt),
+      });
+      this.enqueueTts(turnId, text, { priority: true, opener: true });
       this.firstTtsChunkSent = true;
       return;
     }
+
+    if (!TTS_PHRASE_BATCH) {
+      this.enqueueTts(turnId, text, { priority: false });
+      return;
+    }
+
     this.ttsPhraseBatch.push(text);
-    this.stagedSentenceCount += 1;
     logRealtimeTurn('tts phrase staged', {
       sessionId: this.sessionId,
       turnId,
       batchSize: this.ttsPhraseBatch.length,
       text,
     });
-    if (
-      TTS_STREAM_FIRST_SENTENCE &&
-      !this.firstTtsChunkSent &&
-      (this.userTurnCommitted || this.inputEnded || this.started) &&
-      isCompleteTtsPhrase(text) &&
-      this.ttsPhraseBatch.length === 1
-    ) {
-      this.flushTtsPhraseBatch(turnId, { force: true, reason: 'first_sentence' });
-      return;
-    }
     if (this.ttsPhraseBatch.length >= TTS_PHRASE_BATCH_SENTENCE_LIMIT) {
       this.flushTtsPhraseBatch(turnId, { force: true, reason: 'max_sentences' });
       return;
@@ -1396,6 +1686,8 @@ class RealtimeTurnEngine {
 
   scheduleTtsPhraseBatchFlush(turnId) {
     if (!TTS_PHRASE_BATCH || TTS_PHRASE_BATCH_MAX_WAIT_MS <= 0) {
+      // No wait — flush follow-up phrases ASAP so TTS overlaps LLM streaming.
+      this.flushTtsPhraseBatch(turnId, { force: true, reason: 'immediate' });
       return;
     }
     if (this.ttsPhraseBatchTimer) {
@@ -1417,7 +1709,11 @@ class RealtimeTurnEngine {
     if (
       !this.userTurnCommitted &&
       !(options.force && (this.inputEnded || this.started)) &&
-      options.reason !== 'first_sentence'
+      options.reason !== 'first_sentence' &&
+      options.reason !== 'opener' &&
+      options.reason !== 'immediate' &&
+      options.reason !== 'max_wait' &&
+      options.reason !== 'max_sentences'
     ) {
       if (!this.ttsPhraseBatchTimer) {
         this.ttsPhraseBatchTimer = setTimeout(() => {
@@ -1449,8 +1745,7 @@ class RealtimeTurnEngine {
       text: combined,
       reason: options.reason || 'force',
     });
-    this.enqueueTts(turnId, combined, { priority: !this.firstTtsChunkSent });
-    this.firstTtsChunkSent = true;
+    this.enqueueTts(turnId, combined, { priority: false });
   }
 
   processIncrementalTts(turnId, fullText) {
@@ -1462,6 +1757,27 @@ class RealtimeTurnEngine {
     this.llmEmittedLength = source.length;
 
     while (pending.length > 0 && this.stagedSentenceCount < MAX_TTS_SENTENCES) {
+      // Latency path: cut a short opener as soon as the stream has enough text.
+      if (TTS_STREAM_FIRST_SENTENCE && !this.firstTtsChunkSent) {
+        const opener = takeOpenerTtsChunk(pending);
+        const openerText = stripMarkdownForTts(opener.chunk);
+        const openerWords = countWords(openerText);
+        if (openerWords >= MIN_TTS_SENTENCE_WORDS && isSpeakableTtsText(openerText)) {
+          logRealtimeTurn('tts sentence ready', {
+            sessionId: this.sessionId,
+            turnId,
+            words: openerWords,
+            text: openerText,
+            kind: 'opener',
+          });
+          this.stageTtsPhrase(turnId, openerText);
+          this.completedText += `${openerText} `;
+          pending = opener.rest;
+          continue;
+        }
+        break;
+      }
+
       const nextSentence = takeStrongSentenceChunk(pending);
       if (!nextSentence) {
         if (!this.firstTtsChunkSent && EARLY_TTS_ENABLED) {
@@ -1477,7 +1793,6 @@ class RealtimeTurnEngine {
             });
             this.stageTtsPhrase(turnId, earlyText);
             this.completedText += `${earlyText} `;
-            this.firstTtsChunkSent = true;
             pending = earlyChunk.rest;
             continue;
           }
@@ -1494,6 +1809,7 @@ class RealtimeTurnEngine {
         turnId,
         words,
         text: chunk,
+        kind: 'followup',
       });
       this.stageTtsPhrase(turnId, chunk);
       this.completedText += `${chunk} `;
@@ -1555,17 +1871,23 @@ class RealtimeTurnEngine {
       return;
     }
     if (this.ttsJobsQueued >= MAX_TTS_JOBS_PER_TURN) {
-      const lastJob = this.ttsQueue.find(item => item.turnId === turnId);
-      if (lastJob) {
-        lastJob.text = normalizeTtsPhrase(`${lastJob.text} ${text}`);
-        logRealtimeTurn('tts merged into queued job', {
-          sessionId: this.sessionId,
-          turnId,
-          text: lastJob.text,
-        });
+      const queuedJob =
+        this.ttsQueue.findLast?.(item => item.turnId === turnId) ||
+        [...this.ttsQueue].reverse().find(item => item.turnId === turnId);
+      if (queuedJob) {
+        const merged = normalizeTtsPhrase(`${queuedJob.text} ${text}`);
+        if (merged) {
+          queuedJob.text = merged;
+          logRealtimeTurn('tts merged into queued job', {
+            sessionId: this.sessionId,
+            turnId,
+            sentenceId: queuedJob.sentenceId,
+            text: merged,
+          });
+        }
         return;
       }
-      logRealtimeTurn('tts job dropped, turn job limit reached', {
+      logRealtimeTurn('tts dropped beyond per-turn job cap', {
         sessionId: this.sessionId,
         turnId,
         text,
@@ -1582,16 +1904,32 @@ class RealtimeTurnEngine {
       turnId,
       sentenceId: this.sentenceIndex++,
       text,
-      priority: Boolean(options.priority),
+      priority: Boolean(options.priority || options.opener),
+      opener: Boolean(options.opener) || this.sentenceIndex === 1,
+      ttsRequestAt: 0,
+      queuedAt: Date.now(),
     };
     if (job.priority) {
       this.ttsQueue.unshift(job);
     } else {
       this.ttsQueue.push(job);
     }
+    if (!this.firstTtsRequestAt && (job.opener || job.sentenceId === 0)) {
+      this.firstTtsRequestAt = Date.now();
+      logRealtimeTurn('tts first request queued', {
+        sessionId: this.sessionId,
+        turnId,
+        sentenceId: job.sentenceId,
+        words: countWords(text),
+        text,
+        msFromLlmStartToFirstText: msBetween(this.llmStartedAt, this.firstLlmTextAt),
+        msFromFirstTextToTtsRequest: msBetween(this.firstLlmTextAt || this.llmStartedAt, this.firstTtsRequestAt),
+      });
+    }
     logRealtimeTurn('tts queued', {
       sessionId: this.sessionId,
       turnId,
+      sentenceId: job.sentenceId,
       queued: this.ttsQueue.length,
       text,
     });
@@ -1622,24 +1960,37 @@ class RealtimeTurnEngine {
   }
 
   pumpTtsQueue() {
-    /** Opener (sentence 0) runs alone until first audio bytes stream, then remainder can synth in parallel. */
-    const maxActiveJobs = this.openerTtsChunkStarted ? MAX_TTS_CONCURRENCY : 1;
+    /**
+     * Start the next phrase as soon as the opener TTS request is in flight —
+     * do not wait for the full opener audio to finish synthesizing.
+     */
+    const maxActiveJobs = this.openerTtsStarted ? MAX_TTS_CONCURRENCY : 1;
     while (!this.destroyed && this.activeTtsJobs < maxActiveJobs && this.ttsQueue.length > 0) {
       let pickIdx = 0;
-      if (!this.openerTtsChunkStarted) {
-        const openerIdx = this.ttsQueue.findIndex(item => item.sentenceId === 0);
-        if (openerIdx >= 0) {
-          pickIdx = openerIdx;
-        } else {
-          const priorityIdx = this.ttsQueue.findIndex(item => item.priority);
-          pickIdx = priorityIdx >= 0 ? priorityIdx : 0;
-        }
+      if (!this.openerTtsStarted) {
+        const openerIdx = this.ttsQueue.findIndex(
+          item => item.opener || item.sentenceId === 0 || item.priority,
+        );
+        pickIdx = openerIdx >= 0 ? openerIdx : 0;
       } else {
-        const priorityIdx = this.ttsQueue.findIndex(item => item.priority);
-        pickIdx = priorityIdx >= 0 ? priorityIdx : 0;
+        // Preserve sentenceId order for follow-ups.
+        let bestIdx = 0;
+        let bestId = this.ttsQueue[0]?.sentenceId ?? Number.MAX_SAFE_INTEGER;
+        for (let i = 1; i < this.ttsQueue.length; i += 1) {
+          const id = this.ttsQueue[i].sentenceId;
+          if (id < bestId) {
+            bestId = id;
+            bestIdx = i;
+          }
+        }
+        pickIdx = bestIdx;
       }
       const job = this.ttsQueue.splice(pickIdx, 1)[0];
       this.activeTtsJobs += 1;
+      if (job.opener || job.sentenceId === 0) {
+        this.openerTtsStarted = true;
+        setImmediate(() => this.pumpTtsQueue());
+      }
       this.runTtsJob(job)
         .catch(error => {
           logRealtimeTurn('tts failed', {
@@ -1665,6 +2016,28 @@ class RealtimeTurnEngine {
     }
   }
 
+  logFirstAudioLatency(turnId, sentenceId) {
+    if (this.latencyLogged) {
+      return;
+    }
+    this.latencyLogged = true;
+    const now = this.firstAudioAt || Date.now();
+    logRealtimeTurn('latency pipeline', {
+      sessionId: this.sessionId,
+      turnId,
+      sentenceId,
+      msFromSpeechFinalToLlmStart: msBetween(this.speechFinalAt, this.llmStartedAt),
+      msFromLlmStartToFirstText: msBetween(this.llmStartedAt, this.firstLlmTextAt),
+      msFromFirstTextToTtsRequest: msBetween(
+        this.firstLlmTextAt || this.llmStartedAt,
+        this.firstTtsRequestAt,
+      ),
+      msFromTtsRequestToFirstAudio: msBetween(this.firstTtsRequestAt, now),
+      msFromSpeechFinalToFirstAudio: msBetween(this.speechFinalAt, now),
+      msFromLlmStartToFirstAudio: msBetween(this.llmStartedAt, now),
+    });
+  }
+
   async runTtsJob(job) {
     if (this.destroyed || this.activeTurnId !== job.turnId) {
       return;
@@ -1672,13 +2045,36 @@ class RealtimeTurnEngine {
     let chunkIndex = 0;
     let firstChunkSent = false;
     let streamedBytes = 0;
-    const jobEncoding = job.sentenceId === 0 ? OPENER_TTS_ENCODING : REALTIME_TTS_ENCODING;
+    job.ttsRequestAt = Date.now();
+    if (!this.firstTtsRequestAt) {
+      this.firstTtsRequestAt = job.ttsRequestAt;
+    }
+    const jobEncoding =
+      this.ttsWsSession && !this.ttsWsSession.destroyed
+        ? this.ttsWsSession.format?.encoding || REALTIME_TTS_ENCODING
+        : job.sentenceId === 0 || job.opener
+          ? OPENER_TTS_ENCODING
+          : REALTIME_TTS_ENCODING;
     const ttsFormat = resolveTtsFormat(jobEncoding);
     const streamEncoding = ttsFormat.encoding;
     const streamMimeType = ttsFormat.mimeType;
     const streamSampleRate = ttsFormat.sampleRate || 48000;
-    /** Opener: zero coalesce so chunk 0 reaches the client immediately. */
-    const minChunkBytes = job.sentenceId === 0 ? 0 : undefined;
+    const minChunkBytes =
+      streamEncoding === 'mp3' || streamEncoding === 'opus'
+        ? Math.max(1024, Number(getEnv('DEEPGRAM_TTS_MIN_CHUNK_BYTES', '1024')) || 1024)
+        : Math.max(512, Number(getEnv('DEEPGRAM_TTS_MIN_CHUNK_BYTES', '512')) || 512);
+
+    // Prefer persistent TTS WS; HTTP prewarm only if WS session is absent.
+    if (!this.ttsWsSession && (job.sentenceId === 0 || job.opener)) {
+      if (usesGoogleTts(this.targetLanguage)) {
+        prewarmGoogleTts(this.targetLanguage, this.voiceVariant).catch(() => {});
+      } else {
+        prewarmDeepgramTts(this.ttsModel).catch(() => {});
+      }
+    }
+
+    const queuedAt = job.queuedAt || job.ttsRequestAt || Date.now();
+    let liveMeta = {};
     const result = await synthesizeSpeech({
       text: job.text,
       model: this.ttsModel,
@@ -1689,6 +2085,11 @@ class RealtimeTurnEngine {
       user: this.user,
       encoding: streamEncoding,
       minChunkBytes,
+      ttsWsSession: this.ttsWsSession,
+      onTtsMeta: meta => {
+        liveMeta = meta || {};
+        this._lastTtsMeta = liveMeta;
+      },
       onChunk: (buffer, index, done) => {
         if (this.destroyed || this.activeTurnId !== job.turnId) {
           return;
@@ -1703,8 +2104,9 @@ class RealtimeTurnEngine {
         streamedBytes += buffer.length;
         if (!firstChunkSent) {
           firstChunkSent = true;
-          if (job.sentenceId === 0 && !this.openerTtsChunkStarted) {
+          if ((job.sentenceId === 0 || job.opener) && !this.openerTtsChunkStarted) {
             this.openerTtsChunkStarted = true;
+            this.openerTtsStarted = true;
             logRealtimeTurn('tts opener streaming', {
               sessionId: this.sessionId,
               turnId: job.turnId,
@@ -1712,14 +2114,28 @@ class RealtimeTurnEngine {
             });
             setImmediate(() => this.pumpTtsQueue());
           }
-          const latencyMs = this.turnStartedAt ? Date.now() - this.turnStartedAt : null;
+          if (!this.firstAudioAt) {
+            this.firstAudioAt = Date.now();
+            this.logFirstAudioLatency(job.turnId, job.sentenceId);
+          }
+          const meta = liveMeta || this._lastTtsMeta || {};
           logRealtimeTurn('tts first chunk', {
             sessionId: this.sessionId,
             turnId: job.turnId,
             sentenceId: job.sentenceId,
             bytes: buffer.length,
             encoding: streamEncoding,
-            msSinceLlmStart: latencyMs,
+            msSinceLlmStart: msBetween(this.llmStartedAt),
+            msFromTtsRequestToFirstAudio: msBetween(job.ttsRequestAt || this.firstTtsRequestAt),
+            msFromSpeechFinalToFirstAudio: msBetween(this.speechFinalAt),
+            ttsConnectionReuse: meta.ttsConnectionReuse,
+            ttsRegion: meta.ttsRegion,
+            ttsConnectionMs: meta.ttsConnectionMs,
+            ttsServerTTFBMs: meta.ttsServerTTFBMs,
+            ttsRetryCount: meta.ttsRetryCount,
+            ttsRetryRegion: meta.ttsRetryRegion,
+            ttsRequestQueuedMs: meta.ttsRequestQueuedMs ?? msBetween(queuedAt),
+            ttsRequestToFirstAudioMs: msBetween(job.ttsRequestAt),
           });
         }
         this.send({
@@ -1737,6 +2153,7 @@ class RealtimeTurnEngine {
         });
       },
     });
+    this._lastTtsMeta = result?.ttsMeta || liveMeta || null;
     if (this.destroyed || this.activeTurnId !== job.turnId) {
       return;
     }
@@ -1755,6 +2172,10 @@ class RealtimeTurnEngine {
         streamedBytes,
       });
     } else if (result.audioBase64) {
+      if (!this.firstAudioAt) {
+        this.firstAudioAt = Date.now();
+        this.logFirstAudioLatency(job.turnId, job.sentenceId);
+      }
       this.send({
         type: 'tts_audio',
         ok: true,
@@ -1771,13 +2192,12 @@ class RealtimeTurnEngine {
     if (job.sentenceId >= 0) {
       this.ttsAudioSent = true;
     }
-    const latencyMs = this.turnStartedAt ? Date.now() - this.turnStartedAt : null;
     logRealtimeTurn('tts audio sent', {
       sessionId: this.sessionId,
       turnId: job.turnId,
       sentenceId: job.sentenceId,
       audioBytes: streamedBytes || result.audioBase64?.length || 0,
-      msSinceLlmStart: latencyMs,
+      msSinceLlmStart: msBetween(this.llmStartedAt),
       streamed: Boolean(firstChunkSent),
     });
   }
@@ -1858,6 +2278,9 @@ class RealtimeTurnEngine {
   }
 
   markUtteranceEnd() {
+    if (isInterviewTeacherCompanionId(this.companionId)) {
+      return;
+    }
     if (this.started || this.destroyed) {
       return;
     }
@@ -1893,6 +2316,9 @@ class RealtimeTurnEngine {
     }
     this.inputEnded = true;
     this.userTurnCommitted = true;
+    if (!this.speechFinalAt) {
+      this.speechFinalAt = Date.now();
+    }
     if (this.stablePartialTimer) {
       clearTimeout(this.stablePartialTimer);
       this.stablePartialTimer = null;
@@ -1946,6 +2372,16 @@ class RealtimeTurnEngine {
           prompt: this.latestTranscript,
         });
       }
+      if (isInterviewTeacherCompanionId(this.companionId)) {
+        const finalizeDelay = interviewFinalizeDelayMs();
+        logRealtimeTurn('schedule llm on input end', {
+          sessionId: this.sessionId,
+          finalizeMs: finalizeDelay,
+          incomplete: false,
+        });
+        this.scheduleLlmAfterSilence(finalizeDelay, { trustSilence: true });
+        return;
+      }
       if (looksIncompleteTranscript(this.latestTranscript)) {
         logRealtimeTurn('input ended with incomplete transcript, wait for refinement', {
           sessionId: this.sessionId,
@@ -1965,12 +2401,13 @@ class RealtimeTurnEngine {
         });
         return;
       }
+      const finalizeDelay = STT_FINALIZE_MS;
       logRealtimeTurn('schedule llm on input end', {
         sessionId: this.sessionId,
-        finalizeMs: STT_FINALIZE_MS,
+        finalizeMs: finalizeDelay,
         incomplete: false,
       });
-      this.scheduleLlmAfterSilence(STT_FINALIZE_MS, { trustSilence: true });
+      this.scheduleLlmAfterSilence(finalizeDelay, { trustSilence: true });
     }
   }
 
@@ -1996,6 +2433,10 @@ class RealtimeTurnEngine {
     if (this.abortController) {
       this.abortController.abort();
     }
+    try {
+      this.ttsWsSession?.destroy?.();
+    } catch {}
+    this.ttsWsSession = null;
     this.ttsQueue = [];
     this.lastStagedTtsText = '';
   }

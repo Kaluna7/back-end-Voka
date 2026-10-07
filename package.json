@@ -4,17 +4,30 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node --watch server.js",
+    "seed:companions": "node src/scripts/seedCompanions.js",
+    "generate:companion-locales": "node src/scripts/generateCompanionLocales.js",
+    "apply:companion-locales": "node src/scripts/applyCompanionLocales.js",
+    "seed": "node src/scripts/seed.js && node src/scripts/seedCompanions.js",
+    "redis:up": "docker compose up -d redis",
+    "redis:down": "docker compose down",
+    "redis:logs": "docker compose logs -f redis"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@deepgram/sdk": "^5.9.0",
+    "@google-cloud/text-to-speech": "^6.4.1",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "mongoose": "^9.5.0",
+    "nodemailer": "^9.0.3",
+    "redis": "^6.1.0",
+    "sharp": "^0.35.3",
+    "undici": "^8.8.0",
     "ws": "^8.20.0"
   }
 }

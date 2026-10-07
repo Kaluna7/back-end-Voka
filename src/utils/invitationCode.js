@@ -1,5 +1,5 @@
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 6;
+const CODE_LENGTH = 8;
 
 const generateInvitationCode = () => {
   let code = '';
@@ -23,8 +23,9 @@ const ensureInvitationCodeForUser = async user => {
     const candidate = generateInvitationCode();
     const taken = await User.findOne({ invitationCode: candidate }).select('_id').lean();
     if (!taken) {
+      // Use updateOne so partially-selected documents never wipe omitted paths (e.g. dashboard.chats).
+      await User.updateOne({ _id: user._id }, { $set: { invitationCode: candidate } });
       user.invitationCode = candidate;
-      await user.save();
       return candidate;
     }
   }

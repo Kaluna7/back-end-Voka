@@ -1,12 +1,16 @@
 const mongoose = require('mongoose');
+const { getEnv } = require('./env');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/Voka';
+const resolveMongoUri = () =>
+  getEnv('MONGODB_URI') || getEnv('MONGO_URI') || 'mongodb://127.0.0.1:27017/Moocha';
 
 const connectDatabase = async () => {
-  await mongoose.connect(MONGO_URI);
+  const uri = resolveMongoUri();
+  await mongoose.connect(uri);
+  return uri;
 };
 
 module.exports = {
   connectDatabase,
-  MONGO_URI,
+  resolveMongoUri,
 };

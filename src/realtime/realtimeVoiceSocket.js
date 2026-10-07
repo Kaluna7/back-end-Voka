@@ -3,7 +3,11 @@ const { User } = require('../models/User');
 const {
   sanitizeTeacherCallPayload,
 } = require('../utils/teacherCallAccess');
-const { getCompanionProfile } = require('../constants/companions');
+const { getCompanionProfile: getLegacyCompanionProfile } = require('../constants/companions');
+const {
+  getCompanionProfileSync,
+  loadCompanionCache,
+} = require('../services/companionCatalogService');
 const { resolveCompanionPrompt } = require('../constants/resolveCompanionPrompt');
 const { getEnv } = require('../config/env');
 const { createDeepgramLiveSession } = require('../services/deepgramStreamingService');
@@ -18,33 +22,218 @@ const {
 } = require('../config/learningLanguage');
 const { prewarmGoogleTts } = require('../services/googleTtsService');
 const { prewarmDeepgramTts } = require('../services/deepgramService');
+const { createDeepgramTtsWsSession } = require('../services/deepgramTtsWsSession');
+const { createDeepgramVoiceAgentSession } = require('../services/deepgramVoiceAgentSession');
+const { resolveVoiceProvider, PROVIDERS, buildVoiceAgentThinkUrl } = require('../config/voiceProvider');
 const { prewarmDeepseekVoice } = require('../services/deepseekService');
+const { isInterviewTeacherCompanionId } = require('../utils/interviewTeacherSetup');
+const { syncVoiceBalance, createVoiceMeter } = require('../services/voiceTokenService');
+const { attachCompanionMemory } = require('../services/companionMemoryService');
 
 const WS_PATH = '/ws/realtime-voice';
+const INTERVIEW_UTTERANCE_COMMIT_MS =
+  Number(getEnv('VOICE_AI_INTERVIEW_UTTERANCE_COMMIT_MS', '700')) || 700;
 
 const logRealtimeVoice = (message, details = {}) => {
   console.log(`[realtime-voice] ${message}`, details);
 };
 
 const sendJson = (socket, payload) => {
+  // Every finished AI turn (legacy engine and Voice Agent) passes here — bill its TTS chars.
+  if (payload?.type === 'turn_done' && typeof payload.reply === 'string' && payload.reply) {
+    const session = socket.realtimeVoiceSessions?.get(String(payload.sessionId || ''));
+    session?.voiceMeter?.addTtsChars(payload.reply.length);
+  }
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
 };
 
+/** Dev escape hatch: VOICE_TOKENS_UNLIMITED=true skips balance checks and charging. */
+const voiceTokensUnlimited = () => String(getEnv('VOICE_TOKENS_UNLIMITED', '')).toLowerCase() === 'true';
+
+/**
+ * Bills the call: STT seconds from mic PCM + TTS characters per AI turn, flushed every
+ * few seconds. Pushes `voice_balance` to the app and ends the call at zero.
+ */
+const attachVoiceMeter = (ws, session, userId, initialBalance) => {
+  if (voiceTokensUnlimited()) {
+    return;
+  }
+  session.voiceMeter = createVoiceMeter({
+    userId,
+    initialBalance,
+    sampleRate: session.sampleRate || 16000,
+    onBalance: voiceTokens => {
+      sendJson(ws, { type: 'voice_balance', ok: true, sessionId: session.sessionId, voiceTokens });
+    },
+    onExhausted: () => {
+      logRealtimeVoice('voice tokens exhausted — ending call', { sessionId: session.sessionId });
+      sendJson(ws, {
+        type: 'voice_quota_exhausted',
+        ok: true,
+        sessionId: session.sessionId,
+        voiceTokens: 0,
+      });
+      scheduleSessionCleanup(ws, session);
+    },
+  });
+};
+
 const resolveVoiceVariant = companionId => resolveVoiceVariantForCompanion(companionId);
+
+const VOICE_STATES = Object.freeze({
+  LISTENING: 'LISTENING',
+  USER_SPEAKING: 'USER_SPEAKING',
+  THINKING: 'THINKING',
+  AI_SPEAKING: 'AI_SPEAKING',
+});
+
+/**
+ * Single source of truth for voice UI phase (deepgram-agent).
+ * Dedupes identical transitions and notifies the client once.
+ */
+const setSessionVoiceState = (session, nextState, { reason = '', source = 'deepgram-agent' } = {}) => {
+  if (!session) {
+    return false;
+  }
+  const to = String(nextState || '').toUpperCase();
+  if (!Object.values(VOICE_STATES).includes(to)) {
+    return false;
+  }
+  // null/undefined means "unset" — always allow the first transition (e.g. session_ready).
+  const from = session.voiceState ? String(session.voiceState).toUpperCase() : null;
+  if (from === to) {
+    return false;
+  }
+  session.voiceState = to;
+  // Keep legacy botSpeaking derived for any remaining gates.
+  session.botSpeaking = to === VOICE_STATES.AI_SPEAKING;
+  try {
+    if (session.agentSession) {
+      session.agentSession.agentUtteranceSpeaking = session.botSpeaking;
+      session.agentSession.voiceState = to;
+    }
+  } catch {}
+  logRealtimeVoice('state transition', {
+    sessionId: session.sessionId,
+    from: from || '(none)',
+    to,
+    reason: reason || null,
+    source,
+  });
+  try {
+    session.send?.({
+      type: 'voice_state',
+      ok: true,
+      sessionId: session.sessionId,
+      state: to,
+      reason: reason || undefined,
+      voiceProvider: session.voiceProvider || 'legacy',
+      source,
+    });
+  } catch {}
+  // Also emit bot_speaking for older client paths; state is authoritative for agent UI.
+  try {
+    session.send?.({
+      type: 'bot_speaking',
+      ok: true,
+      sessionId: session.sessionId,
+      turnId: session.agentSession?.activeTurnId || null,
+      active: session.botSpeaking,
+      reason: reason || undefined,
+      voiceProvider: session.voiceProvider || 'legacy',
+      source,
+    });
+  } catch {}
+  return true;
+};
+
+/**
+ * Legacy boolean speaking sync (legacy provider / compatibility).
+ */
+const setSessionBotSpeaking = (session, active, { source = 'unknown', reason = '' } = {}) => {
+  if (!session) {
+    return false;
+  }
+  if (session.voiceProvider === PROVIDERS.DEEPGRAM_AGENT || session.agentSession) {
+    return setSessionVoiceState(
+      session,
+      active ? VOICE_STATES.AI_SPEAKING : VOICE_STATES.LISTENING,
+      { source, reason },
+    );
+  }
+  const next = Boolean(active);
+  if (session.botSpeaking === next) {
+    return false;
+  }
+  session.botSpeaking = next;
+  try {
+    session.engine?.setBotSpeaking?.(next);
+  } catch {}
+  logRealtimeVoice('bot speaking synchronized', {
+    sessionId: session.sessionId,
+    active: next,
+    source,
+    reason: reason || null,
+  });
+  logRealtimeVoice('bot speaking flag', {
+    sessionId: session.sessionId,
+    active: next,
+    voiceProvider: session.voiceProvider || 'legacy',
+  });
+  try {
+    session.send?.({
+      type: 'bot_speaking',
+      ok: true,
+      sessionId: session.sessionId,
+      turnId: null,
+      active: next,
+      reason: reason || undefined,
+      voiceProvider: session.voiceProvider || 'legacy',
+      source,
+    });
+  } catch {}
+  return true;
+};
 
 const cleanupSession = session => {
   if (session?.sessionId) {
-    logRealtimeVoice('cleanup session', { sessionId: session.sessionId });
+    logRealtimeVoice('cleanup session', {
+      sessionId: session.sessionId,
+      voiceProvider: session.voiceProvider || 'legacy',
+    });
   }
   clearInputFinalizeTimer(session);
+  clearInterviewUtteranceCommit(session);
+  if (session?.voiceMeter) {
+    session.voiceMeter.stop().catch(() => {});
+    session.voiceMeter = null;
+  }
   try {
     session?.deepgram?.destroy?.();
   } catch {}
   try {
+    session?.ttsWsSession?.destroy?.();
+  } catch {}
+  try {
     session?.engine?.destroy?.();
   } catch {}
+};
+
+const cleanupSessionAsync = async session => {
+  cleanupSession(session);
+  try {
+    if (session?.agentSession?.closeGracefully) {
+      await session.agentSession.closeGracefully({
+        initiatedBy: 'session_cleanup',
+        timeoutMs: 2000,
+      });
+    } else {
+      session?.agentSession?.destroy?.();
+    }
+  } catch {}
+  session.agentSession = null;
 };
 
 const scheduleSessionCleanup = (ws, session) => {
@@ -61,6 +250,15 @@ const scheduleSessionCleanup = (ws, session) => {
   const attemptCleanup = () => {
     const current = ws.realtimeVoiceSessions.get(sessionId);
     if (!current || current !== session) {
+      return;
+    }
+    if (session.voiceProvider === PROVIDERS.DEEPGRAM_AGENT || session.agentSession) {
+      cleanupSessionAsync(session).finally(() => {
+        if (ws.realtimeVoiceSessions.get(sessionId) === session) {
+          ws.realtimeVoiceSessions.delete(sessionId);
+        }
+        sendJson(ws, { type: 'voice_session_stopped', ok: true, sessionId });
+      });
       return;
     }
     const engineBusy =
@@ -84,6 +282,42 @@ const clearInputFinalizeTimer = session => {
     clearTimeout(session.inputFinalizeTimer);
     session.inputFinalizeTimer = null;
   }
+};
+
+const clearInterviewUtteranceCommit = session => {
+  if (session?.utteranceCommitTimer) {
+    clearTimeout(session.utteranceCommitTimer);
+    session.utteranceCommitTimer = null;
+  }
+};
+
+const scheduleInterviewUtteranceCommit = (ws, session) => {
+  const companionId = session?.companionId || session?.engine?.companionId;
+  if (!session || !isInterviewTeacherCompanionId(companionId)) {
+    return;
+  }
+  clearInterviewUtteranceCommit(session);
+  session.utteranceCommitTimer = setTimeout(() => {
+    session.utteranceCommitTimer = null;
+    const current = ws.realtimeVoiceSessions.get(session.sessionId);
+    if (!current || current !== session || session.stopRequested || session.botSpeaking) {
+      return;
+    }
+    if (session.inputEnded) {
+      return;
+    }
+    if (!session.engine?.hasTranscript?.()) {
+      logRealtimeVoice('interview utterance commit skipped, no transcript', {
+        sessionId: session.sessionId,
+      });
+      return;
+    }
+    logRealtimeVoice('interview auto input end after utterance_end', {
+      sessionId: session.sessionId,
+      waitMs: INTERVIEW_UTTERANCE_COMMIT_MS,
+    });
+    handleVoiceInputEnded(ws, session);
+  }, INTERVIEW_UTTERANCE_COMMIT_MS);
 };
 
 const finalizeDeepgramStream = session => {
@@ -112,6 +346,7 @@ const handleVoiceInputEnded = (ws, session) => {
   if (!session) {
     return;
   }
+  clearInterviewUtteranceCommit(session);
   if (session.inputEnded && session.engine?.inputEnded && !session.engine?.started) {
     logRealtimeVoice('duplicate input end ignored', {
       sessionId: session.sessionId,
@@ -173,6 +408,7 @@ const prepareSessionNextTurn = session => {
     return;
   }
   clearInputFinalizeTimer(session);
+  clearInterviewUtteranceCommit(session);
   session.inputEnded = false;
   session.fallbackStarted = false;
   session.recordedAudio = [];
@@ -256,6 +492,15 @@ const ensureDeepgramForSession = (ws, session) => {
       logRealtimeVoice('deepgram utterance end', { sessionId });
       current.engine?.markUtteranceEnd?.();
       sendJson(ws, { type: 'utterance_end', sessionId });
+      if (isInterviewTeacherCompanionId(current.companionId || current.engine?.companionId)) {
+        sendJson(ws, {
+          type: 'commit_user_turn',
+          ok: true,
+          sessionId,
+          waitMs: INTERVIEW_UTTERANCE_COMMIT_MS,
+        });
+        scheduleInterviewUtteranceCommit(ws, current);
+      }
     },
     onError: error => {
       const current = ws.realtimeVoiceSessions.get(sessionId);
@@ -274,7 +519,13 @@ const ensureDeepgramForSession = (ws, session) => {
           current.connectingDeepgram = false;
           setTimeout(() => {
             const latest = ws.realtimeVoiceSessions.get(sessionId);
-            if (latest && latest === current && !latest.stopRequested && !latest.botSpeaking) {
+            if (
+              latest &&
+              latest === current &&
+              !latest.stopRequested &&
+              !latest.botSpeaking &&
+              (latest.audioChunks || 0) > 0
+            ) {
               ensureDeepgramForSession(ws, latest);
             }
           }, 300);
@@ -284,23 +535,7 @@ const ensureDeepgramForSession = (ws, session) => {
           logRealtimeVoice('deepgram idle close before mic audio, defer reconnect', { sessionId });
           current.deepgram = null;
           current.connectingDeepgram = false;
-          if (!current.stopRequested && !current.botSpeaking) {
-            setTimeout(() => {
-              const latest = ws.realtimeVoiceSessions.get(sessionId);
-              if (
-                latest &&
-                latest === current &&
-                !latest.stopRequested &&
-                !latest.botSpeaking &&
-                !latest.deepgram &&
-                !latest.connectingDeepgram &&
-                !latest.deepgramFailed
-              ) {
-                logRealtimeVoice('deepgram reconnect after idle pre-mic', { sessionId });
-                ensureDeepgramForSession(ws, latest);
-              }
-            }, 250);
-          }
+          // Do NOT auto-reconnect here — wait for the first audio_chunk from the mic.
           return;
         }
         const now = Date.now();
@@ -379,7 +614,7 @@ const MAX_PENDING_AUDIO_CHUNKS = 120;
 const MAX_RECORDED_AUDIO_CHUNKS = 600;
 const VOICE_INPUT_FINALIZE_GRACE_MS =
   Number(getEnv('VOICE_INPUT_FINALIZE_GRACE_MS', '200')) || 200;
-const FALLBACK_STT_TIMEOUT_MS = Number(getEnv('DEEPGRAM_STREAM_REST_FALLBACK_TIMEOUT_MS', '5000')) || 5000;
+const FALLBACK_STT_TIMEOUT_MS = Number(getEnv('DEEPGRAM_STREAM_REST_FALLBACK_TIMEOUT_MS', '10000')) || 10000;
 const STT_UNAVAILABLE_BACKOFF_MS = Number(getEnv('DEEPGRAM_UNAVAILABLE_BACKOFF_MS', '30000')) || 30000;
 let sttUnavailableUntil = 0;
 
@@ -495,6 +730,8 @@ const registerRealtimeVoiceSocket = server => {
     }
 
     wss.handleUpgrade(request, socket, head, ws => {
+      // Set by the upgrade guard in registerRealtimeSockets from the verified token.
+      ws.authUserId = request.authUserId || '';
       wss.emit('connection', ws);
     });
   });
@@ -523,6 +760,10 @@ const registerRealtimeVoiceSocket = server => {
       } catch {
         sendJson(ws, { type: 'voice_error', ok: false, message: 'Invalid realtime voice payload.' });
         return;
+      }
+      // Always act for the signed-in user, never for a userId the client typed in.
+      if (message && typeof message === 'object') {
+        message.userId = ws.authUserId;
       }
 
       const type = message?.type;
@@ -590,20 +831,203 @@ const registerRealtimeVoiceSocket = server => {
             return;
           }
 
+          let voiceBalance = null;
+          if (!voiceTokensUnlimited()) {
+            voiceBalance = await syncVoiceBalance(userId);
+            if (!voiceBalance || voiceBalance.voiceTokens <= 0) {
+              logRealtimeVoice('session rejected: no voice tokens', { sessionId });
+              sendJson(ws, {
+                type: 'voice_session_ready',
+                ok: false,
+                sessionId,
+                code: 'VOICE_TOKENS_EMPTY',
+                message: 'Voice tokens habis.',
+                voiceTokens: 0,
+              });
+              return;
+            }
+          }
+
+          // Long-term memory (by plan) rides on the user object into every voice prompt.
+          await attachCompanionMemory(user, payload.companionId).catch(() => []);
           const sanitizedCall = sanitizeTeacherCallPayload(payload, user);
-          const companion = getCompanionProfile(payload.companionId);
+          await loadCompanionCache();
           const learningLanguage = resolveLearningLanguage(user);
+          const companion =
+            getCompanionProfileSync(payload.companionId, learningLanguage) ||
+            getLegacyCompanionProfile(payload.companionId);
           const voiceVariant = resolveVoiceVariant(payload.companionId);
           const ttsModel = resolveTtsModelForUser(user, payload.model, voiceVariant);
           const sttLanguage = resolveDeepgramSttLanguage(learningLanguage);
+          const useGoogle = usesGoogleTts(learningLanguage);
+          const companionPrompt = resolveCompanionPrompt(
+            payload.companionId,
+            payload.companionPrompt,
+            learningLanguage,
+          );
+          let voiceProvider = resolveVoiceProvider(payload);
+          if (useGoogle && voiceProvider === PROVIDERS.DEEPGRAM_AGENT) {
+            logRealtimeVoice('deepgram-agent unavailable without Aura TTS; using legacy + Google TTS', {
+              sessionId,
+              learningLanguage,
+            });
+            voiceProvider = PROVIDERS.LEGACY;
+          }
+
+          if (voiceProvider === PROVIDERS.DEEPGRAM_AGENT) {
+            let agentSession = null;
+            let agentVoiceSession = null;
+            const send = body => {
+              // Speaking state is owned by setSessionBotSpeaking — skip raw bot_speaking fanout.
+              if (body?.type === 'bot_speaking') {
+                return;
+              }
+              sendJson(ws, body);
+            };
+            try {
+              const firstAssistant = (sanitizedCall.history || []).find(item => {
+                const role = String(item?.role || '').toLowerCase();
+                const text = String(item?.content || item?.text || '').trim();
+                return (role === 'assistant' || role === 'ai') && text;
+              });
+              const greetingText = String(
+                payload.greeting || firstAssistant?.content || firstAssistant?.text || '',
+              ).trim();
+              agentSession = await createDeepgramVoiceAgentSession({
+                sessionId,
+                send,
+                user,
+                companionId: payload.companionId,
+                companionName: companion?.name || payload.companionName,
+                companionDescription: companion?.description || payload.companionDescription,
+                companionPrompt,
+                targetLanguage: learningLanguage,
+                history: sanitizedCall.history,
+                callChatTopic: sanitizedCall.callChatTopic,
+                ttsModel,
+                ttsSpeed: payload.speed,
+                greeting: greetingText || 'Hello! Great to talk with you today.',
+                thinkUrl: buildVoiceAgentThinkUrl(sessionId),
+                onVoiceState: (state, reason) => {
+                  if (agentVoiceSession) {
+                    setSessionVoiceState(agentVoiceSession, state, {
+                      source: 'deepgram-agent',
+                      reason,
+                    });
+                  }
+                },
+              });
+            } catch (error) {
+              logRealtimeVoice('deepgram-agent start failed; falling back to legacy', {
+                sessionId,
+                message: error?.message,
+                code: error?.code,
+              });
+              voiceProvider = PROVIDERS.LEGACY;
+            }
+
+            if (agentSession && voiceProvider === PROVIDERS.DEEPGRAM_AGENT) {
+              const session = {
+                sessionId,
+                companionId: payload.companionId,
+                send: body => sendJson(ws, body),
+                voiceProvider: PROVIDERS.DEEPGRAM_AGENT,
+                agentSession,
+                engine: null,
+                ttsWsSession: null,
+                learningLanguage,
+                sttLanguage,
+                deepgram: null,
+                pendingAudio: [],
+                recordedAudio: [],
+                inputEnded: false,
+                deepgramFailed: false,
+                deepgramConnectAttempts: 0,
+                fallbackStarted: false,
+                connectingDeepgram: false,
+                botSpeaking: false,
+                voiceState: VOICE_STATES.LISTENING,
+                stopRequested: false,
+                preparedForNextTurn: false,
+                resetInProgress: false,
+                sampleRate: Number(message?.sampleRate || 16000),
+                channels: Number(message?.channels || 1),
+                audioChunks: 0,
+                audioBytes: 0,
+                lastDeepgramReconnectAt: 0,
+              };
+              agentVoiceSession = session;
+              // Point agent sends (non-speaking) at session.send; speaking uses onVoiceState.
+              agentSession.send = body => {
+                if (body?.type === 'bot_speaking' || body?.type === 'voice_state') {
+                  return;
+                }
+                session.send(body);
+              };
+              ws.realtimeVoiceSessions.set(sessionId, session);
+              attachVoiceMeter(ws, session, userId, voiceBalance?.voiceTokens);
+              sendJson(ws, {
+                type: 'voice_session_ready',
+                ok: true,
+                sessionId,
+                sttMode: 'agent',
+                voiceProvider: PROVIDERS.DEEPGRAM_AGENT,
+              });
+              session.voiceState = null;
+              setSessionVoiceState(session, VOICE_STATES.LISTENING, {
+                source: 'deepgram-agent',
+                reason: 'session_ready',
+              });
+              prewarmDeepseekVoice({
+                companionId: payload.companionId,
+                companionName: companion?.name || payload.companionName,
+                companionDescription: companion?.description || payload.companionDescription,
+                companionPrompt,
+                targetLanguage: learningLanguage,
+              }).catch(() => {});
+              logRealtimeVoice('voice session language', {
+                sessionId,
+                learningLanguage,
+                sttLanguage,
+                voiceProvider: PROVIDERS.DEEPGRAM_AGENT,
+                ttsProvider: 'deepgram-agent',
+                selectedVoice: ttsModel,
+              });
+              return;
+            }
+          }
+
+          // ---- legacy RealtimeTurnEngine path (kept for A/B + fallback) ----
           const send = body => sendJson(ws, body);
+          let ttsWsSession = null;
+          if (!useGoogle) {
+            try {
+              ttsWsSession = await createDeepgramTtsWsSession({
+                model: ttsModel,
+                encoding: 'linear16',
+                speed: payload.speed,
+              });
+              logRealtimeVoice('deepgram tts ws ready', {
+                sessionId,
+                region: ttsWsSession.region,
+                connectionMs: ttsWsSession.lastConnectionMs,
+              });
+            } catch (error) {
+              logRealtimeVoice('deepgram tts ws unavailable, http keep-alive fallback', {
+                sessionId,
+                message: error?.message,
+              });
+              prewarmDeepgramTts(ttsModel).catch(() => {});
+            }
+          }
+
           const engine = new RealtimeTurnEngine({
             sessionId,
             send,
             user,
             companionName: companion?.name || payload.companionName,
             companionDescription: companion?.description || payload.companionDescription,
-            companionPrompt: resolveCompanionPrompt(payload.companionId, payload.companionPrompt),
+            companionPrompt,
             targetLanguage: learningLanguage,
             history: sanitizedCall.history,
             companionId: payload.companionId,
@@ -612,12 +1036,17 @@ const registerRealtimeVoiceSocket = server => {
             pronunciations: payload.pronunciations,
             voiceVariant,
             callChatTopic: sanitizedCall.callChatTopic,
+            ttsWsSession,
           });
 
           const session = {
             sessionId,
+            companionId: payload.companionId,
             send,
+            voiceProvider: PROVIDERS.LEGACY,
+            agentSession: null,
             engine,
+            ttsWsSession,
             learningLanguage,
             sttLanguage,
             deepgram: null,
@@ -639,19 +1068,27 @@ const registerRealtimeVoiceSocket = server => {
             lastDeepgramReconnectAt: 0,
           };
           ws.realtimeVoiceSessions.set(sessionId, session);
-          sendJson(ws, { type: 'voice_session_ready', ok: true, sessionId, sttMode: 'connecting' });
-          logRealtimeVoice('call session created, deepgram deferred until mic audio', { sessionId });
+          attachVoiceMeter(ws, session, userId, voiceBalance?.voiceTokens);
+          sendJson(ws, {
+            type: 'voice_session_ready',
+            ok: true,
+            sessionId,
+            sttMode: 'connecting',
+            voiceProvider: PROVIDERS.LEGACY,
+          });
+          logRealtimeVoice('call session created, deepgram deferred until mic audio', {
+            sessionId,
+            voiceProvider: PROVIDERS.LEGACY,
+          });
           prewarmDeepseekVoice({
             companionId: payload.companionId,
             companionName: companion?.name || payload.companionName,
             companionDescription: companion?.description || payload.companionDescription,
-            companionPrompt: resolveCompanionPrompt(payload.companionId, payload.companionPrompt),
+            companionPrompt,
             targetLanguage: learningLanguage,
           }).catch(() => {});
-          if (usesGoogleTts(learningLanguage)) {
+          if (useGoogle) {
             prewarmGoogleTts(learningLanguage, voiceVariant);
-          } else {
-            prewarmDeepgramTts(ttsModel).catch(() => {});
           }
           prewarmVoiceFiller({
             ttsModel,
@@ -665,7 +1102,9 @@ const registerRealtimeVoiceSocket = server => {
             sessionId,
             learningLanguage,
             sttLanguage,
-            ttsProvider: usesGoogleTts(learningLanguage) ? 'google' : 'deepgram',
+            voiceProvider: PROVIDERS.LEGACY,
+            ttsProvider: useGoogle ? 'google' : 'deepgram',
+            ttsTransport: ttsWsSession ? 'websocket' : useGoogle ? 'google' : 'http',
           });
         } catch (error) {
           sendJson(ws, {
@@ -682,22 +1121,29 @@ const registerRealtimeVoiceSocket = server => {
         const sessionId = String(message?.sessionId || '');
         const session = ws.realtimeVoiceSessions.get(sessionId);
         if (session) {
-          session.botSpeaking = Boolean(message?.active);
-          session.engine?.setBotSpeaking?.(session.botSpeaking);
-          /** Arm STT when the bot finishes so the next user turn can start without waiting on first chunk. */
+          // deepgram-agent: speaking is owned by AgentAudioDone / first audio — ignore client echoes.
+          if (session.voiceProvider === PROVIDERS.DEEPGRAM_AGENT || session.agentSession) {
+            logRealtimeVoice('bot speaking client echo ignored for deepgram-agent', {
+              sessionId,
+              active: Boolean(message?.active),
+              sessionActive: session.botSpeaking,
+            });
+            return;
+          }
+          setSessionBotSpeaking(session, Boolean(message?.active), {
+            source: 'client',
+            reason: 'client_echo',
+          });
           if (
             !session.botSpeaking &&
             !session.stopRequested &&
             !session.deepgram &&
             !session.connectingDeepgram &&
-            !session.deepgramFailed
+            !session.deepgramFailed &&
+            (session.audioChunks || 0) > 0
           ) {
             ensureDeepgramForSession(ws, session);
           }
-          logRealtimeVoice('bot speaking flag', {
-            sessionId,
-            active: session.botSpeaking,
-          });
         }
         return;
       }
@@ -706,6 +1152,17 @@ const registerRealtimeVoiceSocket = server => {
         const sessionId = String(message?.sessionId || '');
         const session = ws.realtimeVoiceSessions.get(sessionId);
         if (session) {
+          if (session.voiceProvider === PROVIDERS.DEEPGRAM_AGENT || session.agentSession) {
+            session.preparedForNextTurn = true;
+            session.inputEnded = false;
+            sendJson(ws, {
+              type: 'voice_turn_reset_ack',
+              ok: true,
+              sessionId,
+              voiceProvider: PROVIDERS.DEEPGRAM_AGENT,
+            });
+            return;
+          }
           if (session.resetInProgress) {
             sendJson(ws, { type: 'voice_turn_reset_ack', ok: true, sessionId, duplicate: true });
             return;
@@ -724,7 +1181,13 @@ const registerRealtimeVoiceSocket = server => {
               return;
             }
             prepareSessionNextTurn(session);
-            if (!session.deepgram && !session.connectingDeepgram && !session.deepgramFailed) {
+            // Defer Deepgram until mic audio — same as session create.
+            if (
+              !session.deepgram &&
+              !session.connectingDeepgram &&
+              !session.deepgramFailed &&
+              (session.audioChunks || 0) > 0
+            ) {
               ensureDeepgramForSession(ws, session);
             }
           })().finally(() => {
@@ -749,6 +1212,26 @@ const registerRealtimeVoiceSocket = server => {
           return;
         }
         const buffer = Buffer.from(audioBase64, 'base64');
+        session.voiceMeter?.addAudioBytes(buffer.length);
+
+        if (session.voiceProvider === PROVIDERS.DEEPGRAM_AGENT || session.agentSession) {
+          session.audioChunks += 1;
+          session.audioBytes += buffer.length;
+          if (session.audioChunks === 1 || session.audioChunks % 25 === 0) {
+            logRealtimeVoice('mic chunk received', {
+              sessionId,
+              bytes: buffer.length,
+              chunks: session.audioChunks,
+              voiceState: session.voiceState || null,
+              connectionOpen: session.agentSession?.connection?.readyState === 1,
+              acceptMicAudio: session.agentSession?.acceptMicAudio !== false,
+            });
+          }
+          // Always forward PCM — Voice Agent needs audio during bot speech for barge-in.
+          session.agentSession?.sendAudio?.(buffer);
+          return;
+        }
+
         if (session.botSpeaking) {
           if (session.deepgram) {
             try {
@@ -798,6 +1281,17 @@ const registerRealtimeVoiceSocket = server => {
         const sessionId = String(message?.sessionId || '');
         const session = ws.realtimeVoiceSessions.get(sessionId);
         if (session) {
+          if (session.voiceProvider === PROVIDERS.DEEPGRAM_AGENT || session.agentSession) {
+            // Client silence / hang-up: force Flux EOT (native threshold alone often stalls on JA).
+            const forced = session.agentSession?.forceEndTurn?.('client_input_end');
+            logRealtimeVoice('input end → ForceEndTurn for deepgram-agent', {
+              sessionId,
+              chunks: session.audioChunks,
+              bytes: session.audioBytes,
+              forced: Boolean(forced),
+            });
+            return;
+          }
           if (session.botSpeaking) {
             logRealtimeVoice('ignore input end while bot speaking', {
               sessionId,

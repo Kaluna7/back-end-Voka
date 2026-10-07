@@ -1,6 +1,9 @@
 const { getEnv } = require('../config/env');
+const { getGrantUrl } = require('../config/deepgramEndpoints');
+const { deepgramFetch } = require('./deepgramService');
 
-const DEEPGRAM_GRANT_URL = 'https://api.deepgram.com/v1/auth/grant';
+const DEEPGRAM_GRANT_TIMEOUT_MS =
+  Number(getEnv('DEEPGRAM_CONNECT_TIMEOUT_MS', '8000')) || 8000;
 
 const createDeepgramSttGrant = async ({ ttlSeconds = 300 } = {}) => {
   const apiKey = getEnv('DEEPGRAM_API_KEY');
@@ -11,17 +14,22 @@ const createDeepgramSttGrant = async ({ ttlSeconds = 300 } = {}) => {
   }
 
   const ttl = Math.min(Math.max(Number(ttlSeconds) || 300, 60), 3600);
-  const response = await fetch(DEEPGRAM_GRANT_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${apiKey}`,
-      'Content-Type': 'application/json',
+  const response = await deepgramFetch(
+    getGrantUrl(),
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        scopes: ['usage:write'],
+        ttl_seconds: ttl,
+      }),
     },
-    body: JSON.stringify({
-      scopes: ['usage:write'],
-      ttl_seconds: ttl,
-    }),
-  });
+    2,
+    DEEPGRAM_GRANT_TIMEOUT_MS,
+  );
 
   if (!response.ok) {
     const error = new Error(`Deepgram grant failed with status ${response.status}`);

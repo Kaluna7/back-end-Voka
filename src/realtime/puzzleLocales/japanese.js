@@ -1,12 +1,10 @@
-/** Romaji 5-letter words for grid games (Sudoword). */
+/** Romaji 5-letter words for grid games (Sudoword). No truncated stubs. */
 const SUDOWORD_WORD_BANK = [
   'RINGO',
   'SUSHI',
   'RAMEN',
   'GAKKO',
   'GOHAN',
-  'SENSE',
-  'KOUEN',
   'NATSU',
   'GINZA',
   'OSAKA',
@@ -15,23 +13,22 @@ const SUDOWORD_WORD_BANK = [
   'ANIME',
   'INARI',
   'TOKYO',
-  'KARAO',
-  'SAKUR',
   'MATCH',
   'TENKI',
   'DENWA',
   'HOTEL',
-  'KAZOK',
-  'BUDOU',
-  'YAKIM',
-  'NORIM',
   'TAIKO',
   'SHIRO',
   'KURAI',
   'AKARI',
   'HOSHI',
   'TSUKI',
-];
+  'UMAMI',
+  'MOCHI',
+  'KAIJU',
+  'NINJA',
+  'SAKEN',
+].filter(word => /^[A-Z]{5}$/.test(word));
 
 /** Synonym prompts in romaji (A–Z normalized on submit). */
 const SYNOWORD_BANK = [

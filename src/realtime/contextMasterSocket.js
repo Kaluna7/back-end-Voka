@@ -13,15 +13,15 @@ const {
 } = require('./contextMasterPuzzles');
 
 const WS_PATH = '/ws/context-master';
-const MAX_SEARCH_MS = 22 * 1000;
-const QUICK_MATCH_MIN_HUMANS = 2;
-const QUICK_MATCH_WAIT_MS = 8000;
-const LOBBY_DURATION_MS = 3200;
+const MAX_SEARCH_MS = 18 * 1000;
+const LOBBY_DURATION_MS = 2500;
 const TARGET_PLAYERS = 5;
+const ROSTER_SETTLE_MS = 1100;
 const FILL_STAGES = [
-  { atMs: 10 * 1000, target: 2 },
-  { atMs: 15 * 1000, target: 3 },
-  { atMs: 20 * 1000, target: 5 },
+  { atMs: 3 * 1000, target: 2 },
+  { atMs: 6 * 1000, target: 3 },
+  { atMs: 10 * 1000, target: 4 },
+  { atMs: 14 * 1000, target: 5 },
 ];
 
 const sendJson = (socket, payload) => {
@@ -49,6 +49,8 @@ const registerContextMasterSocket = server => {
   let queueStartedAt = null;
   let lastRosterTarget = 0;
   let queueFlushing = false;
+  let pendingFlushTimer = null;
+  let fillSlots = [];
   const rooms = new Map();
   const socketMeta = new Map();
 
@@ -57,7 +59,6 @@ const registerContextMasterSocket = server => {
       clearInterval(queueTickInterval);
       queueTickInterval = null;
     }
-    lastRosterTarget = 0;
     if (queueQuickTimer) {
       clearTimeout(queueQuickTimer);
       queueQuickTimer = null;
@@ -66,23 +67,54 @@ const registerContextMasterSocket = server => {
 
   const clearQueueTimers = () => {
     stopQueueTicker();
+    if (pendingFlushTimer) {
+      clearTimeout(pendingFlushTimer);
+      pendingFlushTimer = null;
+    }
+  };
+
+  const requestFlush = (delayMs = 0) => {
+    if (queueFlushing || queue.length === 0 || pendingFlushTimer) {
+      return;
+    }
+    if (delayMs <= 0) {
+      flushQueue();
+      return;
+    }
+    pendingFlushTimer = setTimeout(() => {
+      pendingFlushTimer = null;
+      flushQueue();
+    }, delayMs);
+  };
+
+  const ensureFillSlots = needed => {
+    const usedNames = new Set([
+      ...queue.map(entry => entry.displayName),
+      ...fillSlots.map(slot => slot.name),
+    ]);
+    while (fillSlots.length < needed) {
+      const name = randomBotName(usedNames);
+      usedNames.add(name);
+      fillSlots.push({
+        id: `fill_slot_${fillSlots.length}`,
+        name,
+      });
+    }
   };
 
   const buildRoster = (targetCount, viewerId) => {
-    const usedNames = new Set();
     const humans = queue.slice(0, TARGET_PLAYERS);
-    const roster = humans.map(entry => {
-      usedNames.add(entry.displayName);
-      return {
-        id: entry.playerId,
-        name: entry.displayName,
-        isYou: entry.playerId === viewerId,
-      };
-    });
-    while (roster.length < targetCount && roster.length < TARGET_PLAYERS) {
+    const roster = humans.map(entry => ({
+      id: entry.playerId,
+      name: entry.displayName,
+      isYou: entry.playerId === viewerId,
+    }));
+    const fillNeeded = Math.max(0, Math.min(targetCount, TARGET_PLAYERS) - roster.length);
+    ensureFillSlots(fillNeeded);
+    for (let i = 0; i < fillNeeded; i += 1) {
       roster.push({
-        id: `fill_${Date.now()}_${roster.length}`,
-        name: randomBotName(usedNames),
+        id: fillSlots[i].id,
+        name: fillSlots[i].name,
         isYou: false,
       });
     }
@@ -112,6 +144,8 @@ const registerContextMasterSocket = server => {
       clearQueueTimers();
       queueStartedAt = null;
       queueFlushing = false;
+      lastRosterTarget = 0;
+      fillSlots = [];
     }
   };
 
@@ -305,7 +339,7 @@ const registerContextMasterSocket = server => {
     room.botTimer = setInterval(() => runBotTurn(room), 4000 + Math.floor(Math.random() * 2000));
   };
 
-  const createRoom = humanEntries => {
+  const createRoom = (humanEntries, botSlots = []) => {
     const roomId = `ws_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const usedNames = new Set();
     const players = [];
@@ -325,11 +359,15 @@ const registerContextMasterSocket = server => {
       socketMeta.set(entry.socket, { playerId: entry.playerId, roomId });
     });
 
+    let botIndex = 0;
     while (players.length < TARGET_PLAYERS) {
-      const botId = `bot_${roomId}_${players.length}`;
+      const slot = botSlots[botIndex];
+      botIndex += 1;
+      const botName = slot?.name || randomBotName(usedNames);
+      usedNames.add(botName);
       players.push({
-        id: botId,
-        name: randomBotName(usedNames),
+        id: slot?.id || `bot_${roomId}_${players.length}`,
+        name: botName,
         isBot: true,
         socket: null,
         score: 0,
@@ -368,8 +406,14 @@ const registerContextMasterSocket = server => {
     queueFlushing = true;
     clearQueueTimers();
     queueStartedAt = null;
+    lastRosterTarget = 0;
 
     const batch = queue.splice(0, Math.min(queue.length, TARGET_PLAYERS));
+    const botsNeeded = Math.max(0, TARGET_PLAYERS - batch.length);
+    ensureFillSlots(botsNeeded);
+    const botSlots = fillSlots.slice(0, botsNeeded);
+    fillSlots = [];
+
     batch.forEach(entry => {
       sendJson(entry.socket, {
         type: 'queue_matched',
@@ -377,7 +421,7 @@ const registerContextMasterSocket = server => {
         filledWithBots: batch.length < TARGET_PLAYERS,
       });
     });
-    createRoom(batch);
+    createRoom(batch, botSlots);
     queueFlushing = false;
   };
 
@@ -390,43 +434,36 @@ const registerContextMasterSocket = server => {
       return;
     }
 
-    if (queue.length >= TARGET_PLAYERS) {
-      flushQueue();
-      return;
-    }
-
     if (!queueStartedAt) {
       queueStartedAt = Date.now();
     }
 
     const elapsed = Date.now() - queueStartedAt;
+    let target = Math.max(1, Math.min(queue.length, TARGET_PLAYERS));
 
-    if (queue.length >= QUICK_MATCH_MIN_HUMANS) {
-      if (elapsed >= QUICK_MATCH_WAIT_MS) {
-        flushQueue();
+    if (queue.length >= TARGET_PLAYERS) {
+      target = TARGET_PLAYERS;
+    } else {
+      for (const stage of FILL_STAGES) {
+        if (elapsed >= stage.atMs) {
+          target = Math.max(target, stage.target);
+        }
       }
-      return;
-    }
-
-    if (elapsed >= MAX_SEARCH_MS) {
-      flushQueue();
-      return;
-    }
-
-    let target = 1;
-    for (const stage of FILL_STAGES) {
-      if (elapsed >= stage.atMs) {
-        target = stage.target;
+      if (elapsed >= MAX_SEARCH_MS) {
+        target = TARGET_PLAYERS;
       }
     }
+
+    target = Math.min(TARGET_PLAYERS, target);
 
     if (target > lastRosterTarget) {
       lastRosterTarget = target;
       sendSearchRoster(target);
     }
 
-    if (target >= TARGET_PLAYERS) {
-      flushQueue();
+    // Only start after the search roster is full (5). Pause so UI can show all 5 first.
+    if (lastRosterTarget >= TARGET_PLAYERS) {
+      requestFlush(ROSTER_SETTLE_MS);
     }
   };
 
@@ -441,6 +478,7 @@ const registerContextMasterSocket = server => {
     if (queue.length === 0) {
       clearQueueTimers();
       queueStartedAt = null;
+      lastRosterTarget = 0;
       return;
     }
 
@@ -448,9 +486,17 @@ const registerContextMasterSocket = server => {
       queueStartedAt = Date.now();
     }
 
-    lastRosterTarget = 0;
-    sendSearchRoster(1);
-    lastRosterTarget = 1;
+    // Keep progressing roster; never reset back to 1 when another player joins (avoids blink).
+    const nextTarget = Math.max(lastRosterTarget || 1, Math.min(queue.length, TARGET_PLAYERS));
+    if (nextTarget > lastRosterTarget) {
+      lastRosterTarget = nextTarget;
+      sendSearchRoster(nextTarget);
+    } else if (lastRosterTarget < 1) {
+      lastRosterTarget = 1;
+      sendSearchRoster(1);
+    } else {
+      sendSearchRoster(lastRosterTarget);
+    }
     startQueueTicker();
     processQueueTick();
   };

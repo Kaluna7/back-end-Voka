@@ -1,34 +1,5 @@
-/** Pinyin 5-letter words for Sudoword (Latin letters; grid games). */
-const SUDOWORD_WORD_BANK = [
-  'NIHAO',
-  'XUEXI',
-  'TONGX',
-  'JINTI',
-  'DIANH',
-  'FEIJI',
-  'HUOCH',
-  'GONGZ',
-  'YINHA',
-  'MEILI',
-  'KUAIS',
-  'MANMA',
-  'XUESH',
-  'LAOSH',
-  'PENGY',
-  'HAIZI',
-  'TIANQ',
-  'ZAOSH',
-  'WANSH',
-  'KAFEI',
-  'SHUIG',
-  'GUOJ',
-  'CHENG',
-  'BEIJN',
-  'SHANG',
-  'GUANG',
-  'WUHAN',
-  'CHONG',
-].filter(word => word.length === 5);
+/** Prefer English Sudoword bank — Chinese pinyin truncations were breaking puzzles. */
+const SUDOWORD_WORD_BANK = [];
 
 const SYNOWORD_BANK = [
   { word: 'KUAILE', synonyms: ['GAOXIN', 'YUKUAI', 'KAIXIN', 'XINGF'] },

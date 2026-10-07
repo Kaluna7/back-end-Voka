@@ -10,28 +10,29 @@ const SUDOWORD_WORD_BANK = [
   'AGUAS',
   'CALLE',
   'FELIZ',
-  'RAPID',
   'LENTO',
   'CALOR',
-  'FRIO',
-  'LLUVI',
-  'VIENT',
   'NIEVE',
   'SILLA',
   'HOGAR',
   'PLAYA',
   'CLASE',
   'TARDE',
-  'MANAN',
   'NOCHE',
   'CIELO',
-  'BOSQU',
-  'CIUDA',
   'VENTA',
-  'PUERT',
+  'PERRO',
+  'GATOS',
+  'LECHE',
+  'PANES',
+  'MESAS',
+  'ROCAS',
+  'NUBES',
+  'PINOS',
+  'BARCO',
 ];
 
-const SUDOWORD_FILTERED = SUDOWORD_WORD_BANK.filter(word => word.length === 5);
+const SUDOWORD_FILTERED = SUDOWORD_WORD_BANK.filter(word => /^[A-Z]{5}$/.test(word));
 
 /** Synonym prompts (A–Z normalized on submit). */
 const SYNOWORD_BANK = [

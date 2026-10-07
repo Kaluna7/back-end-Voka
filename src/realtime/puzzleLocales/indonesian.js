@@ -12,9 +12,7 @@ const SUDOWORD_WORD_BANK = [
   'PINTU',
   'JALAN',
   'TEMAN',
-  'KANTO',
   'HUTAN',
-  'PANTA',
   'BUKIT',
   'SENJA',
   'PAGAR',
@@ -24,7 +22,15 @@ const SUDOWORD_WORD_BANK = [
   'CERAH',
   'HIJAU',
   'PUTIH',
-].filter(word => word.length === 5);
+  'MERAH',
+  'HITAM',
+  'PANAS',
+  'ANGIN',
+  'BURUH',
+  'SUSAH',
+  'MURAH',
+  'BAGUS',
+].filter(word => /^[A-Z]{5}$/.test(word));
 
 const SYNOWORD_BANK = [
   { word: 'SENANG', synonyms: ['GIRANG', 'BAHAGIA', 'SUKA', 'GEMBIRA'] },

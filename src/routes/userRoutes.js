@@ -5,12 +5,13 @@ const {
   invitationRedeemRateLimit,
   invitationBasicWaf,
 } = require('../middleware/invitationRateLimit');
+const { profileAvatarUploadRateLimit } = require('../middleware/profileAvatarRateLimit');
 
 const router = express.Router();
 
 router.get('/:userId/profile', getProfile);
 router.put('/:userId/onboarding', updateOnboarding);
-router.put('/:userId/profile', updateProfile);
+router.put('/:userId/profile', profileAvatarUploadRateLimit, updateProfile);
 router.post(
   '/:userId/invitation/redeem',
   invitationRedeemRateLimit,

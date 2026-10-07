@@ -6,8 +6,9 @@ const router = express.Router();
 router.get('/health', (_, res) => {
   res.json({
     status: 'ok',
-    message: 'Voka backend is running',
+    message: 'Moocha backend is running',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    databaseName: mongoose.connection.name || '',
   });
 });
 

@@ -16,7 +16,7 @@ const { User, buildOwnerId } = require('../models/User');
 const { Character } = require('../models/Character');
 const characterCtl = require('../controllers/characterController');
 
-const TEST_PREFIX = 'voka_e2e_';
+const TEST_PREFIX = 'moocha_e2e_';
 
 const fakeRes = () => {
   const ctx = {
@@ -66,8 +66,8 @@ const main = async () => {
 
   await cleanup();
 
-  const userA = await ensureUser({ email: `${TEST_PREFIX}a@voka.test`, name: 'User A' });
-  const userB = await ensureUser({ email: `${TEST_PREFIX}b@voka.test`, name: 'User B' });
+  const userA = await ensureUser({ email: `${TEST_PREFIX}a@moocha.test`, name: 'User A' });
+  const userB = await ensureUser({ email: `${TEST_PREFIX}b@moocha.test`, name: 'User B' });
   expect(userA.ownerId !== userB.ownerId, 'ownerId user A != user B');
 
   // A creates one private + one public character
@@ -116,7 +116,7 @@ const main = async () => {
   expect(ids.includes(aPublicId), 'B sees A public character');
   expect(!ids.includes(aPrivateId), 'B does NOT see A private character');
   const sysCount = bChars.filter(c => c.isSystem).length;
-  expect(sysCount >= 2, 'system characters (Kael/Yuki) appear in list');
+  expect(sysCount === 0, 'system characters are listed via companion catalog, not Character API');
 
   // List for A must include both A's characters
   const resListA = fakeRes();

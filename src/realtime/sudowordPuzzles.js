@@ -274,16 +274,40 @@ const isPlayerLikeName = name => {
 
 const { getSudowordWordBank } = require('./puzzleLocales');
 
-const pickWord = (bank = WORD_BANK) => bank[Math.floor(Math.random() * bank.length)];
+const WORD_LENGTH = 5;
+
+const normalizeWord = value =>
+  String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, '');
+
+const isValidSudoword = word =>
+  typeof word === 'string' && word.length === WORD_LENGTH && /^[A-Z]+$/.test(word);
+
+const sanitizeWordBank = (bank, fallback = WORD_BANK) => {
+  const cleaned = (Array.isArray(bank) ? bank : [])
+    .map(normalizeWord)
+    .filter(isValidSudoword);
+  if (cleaned.length > 0) {
+    return cleaned;
+  }
+  return fallback.map(normalizeWord).filter(isValidSudoword);
+};
+
+const pickWord = (bank = WORD_BANK) => {
+  const safe = sanitizeWordBank(bank, WORD_BANK);
+  return safe[Math.floor(Math.random() * safe.length)] || 'MANGO';
+};
 
 const buildChallenge = (learningLanguage = 'English') => {
   const localizedBank = getSudowordWordBank(learningLanguage);
-  const bank =
-    localizedBank && localizedBank.length > 0
-      ? localizedBank
-      : WORD_BANK;
+  const bank = sanitizeWordBank(
+    localizedBank && localizedBank.length > 0 ? localizedBank : WORD_BANK,
+    WORD_BANK,
+  );
   const word = pickWord(bank);
-  const blankIndex = Math.floor(Math.random() * 5);
+  const blankIndex = Math.floor(Math.random() * word.length);
   const letters = word.split('').map((letter, index) => (index === blankIndex ? null : letter));
   return {
     id: `ch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -319,7 +343,7 @@ const calcSudowordExp = (finalScore, rank = 5) => {
 };
 
 module.exports = {
-  MATCH_DURATION_MS: 5 * 60 * 1000,
+  MATCH_DURATION_MS: 2 * 60 * 1000,
   POINTS_CORRECT: 15,
   POINTS_WRONG: 5,
   calcSudowordExp,

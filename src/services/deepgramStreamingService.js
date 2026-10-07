@@ -1,7 +1,12 @@
 const WebSocket = require('ws');
 const { getEnv } = require('../config/env');
-
-const DEEPGRAM_LIVE_URL = 'wss://api.eu.deepgram.com/v1/listen';
+const {
+  getAlternateRegion,
+  getListenLiveWsUrl,
+  isRetryableNetworkError,
+  rememberWorkingRegion,
+  resolveRegion,
+} = require('../config/deepgramEndpoints');
 
 const parseNetworkError = error => {
   const code = error?.cause?.code || error?.code || 'NETWORK_ERROR';
@@ -16,8 +21,9 @@ const buildDeepgramLiveUrl = ({
   smartFormat = true,
   punctuate = true,
   endpointingMs,
+  region = resolveRegion(),
 } = {}) => {
-  const url = new URL(DEEPGRAM_LIVE_URL);
+  const url = new URL(getListenLiveWsUrl(region));
   url.searchParams.set('model', getEnv('DEEPGRAM_STREAM_MODEL', 'nova-3'));
   const streamLanguage =
     typeof language === 'string' && language.trim()
@@ -35,7 +41,6 @@ const buildDeepgramLiveUrl = ({
   url.searchParams.set('smart_format', smartFormat ? 'true' : 'false');
   url.searchParams.set('punctuate', punctuate ? 'true' : 'false');
   url.searchParams.set('vad_events', 'true');
-  // Deepgram rejects utterance_end_ms below 1000 (HTTP 400 on connect).
   const utteranceEndMs = Number(getEnv('DEEPGRAM_UTTERANCE_END_MS', '0')) || 0;
   if (utteranceEndMs >= 1000) {
     url.searchParams.set('utterance_end_ms', String(utteranceEndMs));
@@ -48,13 +53,14 @@ const extractTranscript = payload => {
   return typeof alt?.transcript === 'string' ? alt.transcript.trim() : '';
 };
 
-const createDeepgramLiveSession = ({
-  sampleRate = 16000,
-  channels = 1,
+const openDeepgramLiveSocket = ({
+  sampleRate,
+  channels,
   language,
-  smartFormat = true,
-  punctuate = true,
+  smartFormat,
+  punctuate,
   endpointingMs,
+  region,
   onTranscript,
   onSpeechStarted,
   onUtteranceEnd,
@@ -71,15 +77,16 @@ const createDeepgramLiveSession = ({
 
     let opened = false;
     let intentionalClose = false;
-    const connectTimeoutMs = Number(getEnv('DEEPGRAM_STREAM_CONNECT_TIMEOUT_MS', '3000')) || 3000;
+    const connectTimeoutMs = Number(getEnv('DEEPGRAM_STREAM_CONNECT_TIMEOUT_MS', '5000')) || 5000;
     const forceIpv4 = getEnv('DEEPGRAM_FORCE_IPV4', 'true').toLowerCase() === 'true';
     const socket = new WebSocket(
-      buildDeepgramLiveUrl({ sampleRate, channels, language, smartFormat, punctuate, endpointingMs }),
+      buildDeepgramLiveUrl({ sampleRate, channels, language, smartFormat, punctuate, endpointingMs, region }),
       {
-      headers: { Authorization: `Token ${apiKey}` },
-      handshakeTimeout: connectTimeoutMs,
-      ...(forceIpv4 ? { family: 4 } : {}),
-    });
+        headers: { Authorization: `Token ${apiKey}` },
+        handshakeTimeout: connectTimeoutMs,
+        ...(forceIpv4 ? { family: 4 } : {}),
+      },
+    );
 
     const safeError = error => {
       if (typeof onError === 'function') {
@@ -89,6 +96,7 @@ const createDeepgramLiveSession = ({
 
     socket.on('open', () => {
       opened = true;
+      rememberWorkingRegion(region);
       resolve({
         sendAudio(buffer) {
           if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
@@ -184,6 +192,24 @@ const createDeepgramLiveSession = ({
       }
     });
   });
+
+const createDeepgramLiveSession = async options => {
+  const primaryRegion = resolveRegion();
+  try {
+    return await openDeepgramLiveSocket({ ...options, region: primaryRegion });
+  } catch (error) {
+    const fallbackRegion = getAlternateRegion(primaryRegion);
+    if (!isRetryableNetworkError(error) || fallbackRegion === primaryRegion) {
+      throw error;
+    }
+    console.warn('[deepgram-live] primary region failed, retrying alternate', {
+      primaryRegion,
+      fallbackRegion,
+      message: error?.message,
+    });
+    return openDeepgramLiveSocket({ ...options, region: fallbackRegion });
+  }
+};
 
 module.exports = {
   createDeepgramLiveSession,

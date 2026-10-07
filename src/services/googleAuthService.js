@@ -2,7 +2,7 @@ const { getEnv } = require('../config/env');
 
 /**
  * Verifies a Google ID token (from mobile Sign-In) against Google's tokeninfo endpoint.
- * @returns {Promise<{ sub: string, email: string, name: string } | null>}
+ * @returns {Promise<{ sub: string, email: string, name: string, picture?: string } | null>}
  */
 const verifyGoogleIdToken = async idToken => {
   const clientId = getEnv('GOOGLE_CLIENT_ID');
@@ -31,10 +31,16 @@ const verifyGoogleIdToken = async idToken => {
     return null;
   }
 
+  const picture =
+    typeof payload.picture === 'string' && payload.picture.trim().length > 0
+      ? payload.picture.trim()
+      : undefined;
+
   return {
     sub: String(payload.sub || ''),
     email: String(payload.email).toLowerCase().trim(),
     name: String(payload.name || payload.given_name || payload.email).trim(),
+    picture,
   };
 };
 

@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { getEnv } = require('../config/env');
 
 const signingSecret = () =>
-  getEnv('AUTH_SIGNING_SECRET') || getEnv('MONGODB_URI', 'voka-unsafe-dev-secret');
+  getEnv('AUTH_SIGNING_SECRET') || getEnv('MONGODB_URI', 'moocha-unsafe-dev-secret');
 
 const signSetupToken = email => {
   const exp = Math.floor(Date.now() / 1000) + 30 * 60;

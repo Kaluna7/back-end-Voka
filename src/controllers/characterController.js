@@ -48,6 +48,9 @@ const clampBondLevel = (value, fallback) => {
   return Math.max(1, Math.min(10, Math.round(numeric)));
 };
 
+/** System characters (Kael/Yuki/Yue Lian) live in the companion catalog, not this list. */
+const userCreatedCharacterFilter = { isSystem: { $ne: true } };
+
 /**
  * GET /api/users/:userId/characters
  * Query:
@@ -72,7 +75,6 @@ const listCharactersForUser = async (req, res) => {
     if (ownerId) {
       filters.push({ ownerId, visibility: 'private' });
     }
-    filters.push({ isSystem: true });
   }
 
   if (visibility === 'public') {
@@ -80,17 +82,24 @@ const listCharactersForUser = async (req, res) => {
     if (!filtered.length) {
       filtered.push({ visibility: 'public' });
     }
-    const docs = await Character.find({ $or: filtered }).sort({ updatedAt: -1 }).lean();
+    const docs = await Character.find({ $or: filtered, ...userCreatedCharacterFilter })
+      .sort({ updatedAt: -1 })
+      .lean();
     return respondCharacters(res, docs, user);
   }
   if (visibility === 'private') {
-    const docs = await Character.find({ ownerId, visibility: 'private' })
+    const docs = await Character.find({ ownerId, visibility: 'private', ...userCreatedCharacterFilter })
       .sort({ updatedAt: -1 })
       .lean();
     return respondCharacters(res, docs, user);
   }
 
-  const docs = await Character.find({ $or: filters }).sort({ updatedAt: -1 }).lean();
+  const docs = await Character.find({
+    $or: filters,
+    ...userCreatedCharacterFilter,
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
   return respondCharacters(res, docs, user);
 };
 

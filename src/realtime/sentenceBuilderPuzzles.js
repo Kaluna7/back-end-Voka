@@ -342,6 +342,21 @@ const shuffleArray = items => {
   return copy;
 };
 
+/** Shuffle word chips, but keep each word intact (never scramble letters). */
+const shuffleTokensKeepWordsIntact = tokens => {
+  if (!Array.isArray(tokens) || tokens.length < 2) {
+    return tokens;
+  }
+  let shuffled = shuffleArray(tokens);
+  const sameOrder = shuffled.every((token, index) => token.id === tokens[index].id);
+  if (sameOrder) {
+    shuffled = [...tokens];
+    const last = shuffled.pop();
+    shuffled.unshift(last);
+  }
+  return shuffled;
+};
+
 const tokenizeSentence = sentence => {
   const words = String(sentence || '')
     .trim()
@@ -357,7 +372,7 @@ const pickSentence = () => SENTENCE_BANK[Math.floor(Math.random() * SENTENCE_BAN
 
 const buildChallenge = () => {
   const sentence = pickSentence();
-  const tokens = shuffleArray(tokenizeSentence(sentence));
+  const tokens = shuffleTokensKeepWordsIntact(tokenizeSentence(sentence));
   return {
     id: `sb_${Date.now()}_random`,
     tokens,

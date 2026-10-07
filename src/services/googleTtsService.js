@@ -82,9 +82,11 @@ const synthesizeSpeechWithGoogle = async ({
   } catch (error) {
     const message = error?.message || 'Google TTS request failed.';
     const err = new Error(message);
-    if (/PERMISSION_DENIED|has not been used|SERVICE_DISABLED/i.test(message)) {
+    if (/UNAUTHENTICATED|invalid_grant|invalid authentication|account not found/i.test(message)) {
+      err.code = 'GOOGLE_TTS_UNAUTHENTICATED';
+    } else if (/PERMISSION_DENIED|has not been used|SERVICE_DISABLED/i.test(message)) {
       err.code = 'GOOGLE_TTS_API_DISABLED';
-    } else if (/NOT_FOUND|does not exist|invalid/i.test(message)) {
+    } else if (/NOT_FOUND|does not exist|Voice .+ not found/i.test(message)) {
       err.code = 'GOOGLE_TTS_VOICE_INVALID';
     } else {
       err.code = 'GOOGLE_TTS_REQUEST_FAILED';

@@ -12,25 +12,32 @@ const normalizedLang = learningLanguage => normalizeLearningLanguage(learningLan
 const getSudowordWordBank = learningLanguage => {
   const lang = normalizedLang(learningLanguage);
   if (lang === 'Japanese') {
-    return japanese.SUDOWORD_WORD_BANK.filter(word => word.length === 5);
+    const bank = japanese.SUDOWORD_WORD_BANK.filter(word => /^[A-Za-z]{5}$/.test(word));
+    return bank.length > 0 ? bank.map(w => w.toUpperCase()) : null;
   }
   if (lang === 'Spanish') {
-    return spanish.SUDOWORD_WORD_BANK;
+    const bank = spanish.SUDOWORD_WORD_BANK.filter(word => /^[A-Za-z]{5}$/.test(word));
+    return bank.length > 0 ? bank.map(w => w.toUpperCase()) : null;
   }
   if (lang === 'Portuguese') {
-    return portuguese.SUDOWORD_WORD_BANK;
+    const bank = portuguese.SUDOWORD_WORD_BANK.filter(word => /^[A-Za-z]{5}$/.test(word));
+    return bank.length > 0 ? bank.map(w => w.toUpperCase()) : null;
   }
   if (lang === 'German') {
-    return german.SUDOWORD_WORD_BANK;
+    const bank = german.SUDOWORD_WORD_BANK.filter(word => /^[A-Za-z]{5}$/.test(word));
+    return bank.length > 0 ? bank.map(w => w.toUpperCase()) : null;
   }
   if (lang === 'Indonesian') {
-    return indonesian.SUDOWORD_WORD_BANK;
+    const bank = indonesian.SUDOWORD_WORD_BANK.filter(word => /^[A-Za-z]{5}$/.test(word));
+    return bank.length > 0 ? bank.map(w => w.toUpperCase()) : null;
   }
   if (lang === 'Chinese') {
-    return chinese.SUDOWORD_WORD_BANK;
+    // Empty/truncated pinyin banks made puzzles look "scrambled"/broken — use English.
+    return null;
   }
   if (lang === 'French') {
-    return french.SUDOWORD_WORD_BANK;
+    const bank = french.SUDOWORD_WORD_BANK.filter(word => /^[A-Za-z]{5}$/.test(word));
+    return bank.length > 0 ? bank.map(w => w.toUpperCase()) : null;
   }
   return null;
 };

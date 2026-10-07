@@ -19,6 +19,7 @@ const {
   createFluxStreamingSttSession,
   transcribeAudioWithDeepgram,
   normalizeBase64Audio,
+  prewarmDeepgramTts,
 } = require('../services/deepgramService');
 
 const WS_PATH = '/ws/voice-call';
@@ -84,15 +85,26 @@ const createLiveSentenceTtsStreamer = (ws, requestId, payload, ttsContext) => {
     emittedCount += 1;
     queue = queue
       .then(async () => {
-        const chunk = await synthesizeSpeech({
-          text,
-          speed: payload.speed,
-          model: ttsContext.resolvedModel,
-          pronunciations: payload.pronunciations,
-          learningLanguage: ttsContext.learningLanguage,
-          voiceVariant: ttsContext.voiceVariant,
-          user: ttsContext.user,
-        });
+        const attempt = () =>
+          synthesizeSpeech({
+            text,
+            speed: payload.speed,
+            model: ttsContext.resolvedModel,
+            pronunciations: payload.pronunciations,
+            learningLanguage: ttsContext.learningLanguage,
+            voiceVariant: ttsContext.voiceVariant,
+            user: ttsContext.user,
+          });
+        let chunk = null;
+        try {
+          chunk = await attempt();
+        } catch (firstError) {
+          await new Promise(resolve => setTimeout(resolve, 350));
+          chunk = await attempt();
+        }
+        if (!chunk || !chunk.audioBase64) {
+          return;
+        }
         sendJson(ws, {
           type: 'voice_call_tts_sentence',
           ok: true,
@@ -183,10 +195,10 @@ const streamVoiceCallTtsOverWs = async (ws, requestId, result, payload, ttsConte
     },
   });
 
-  try {
-    for (let i = 0; i < sentences.length; i += 1) {
-      const chunk = await synthesizeSpeech({
-        text: sentences[i],
+  const synthesizeWithRetry = async sentenceText => {
+    const attempt = () =>
+      synthesizeSpeech({
+        text: sentenceText,
         speed,
         model: ttsContext.resolvedModel,
         pronunciations,
@@ -194,6 +206,20 @@ const streamVoiceCallTtsOverWs = async (ws, requestId, result, payload, ttsConte
         voiceVariant: ttsContext.voiceVariant,
         user: ttsContext.user,
       });
+    try {
+      return await attempt();
+    } catch (firstError) {
+      await new Promise(resolve => setTimeout(resolve, 350));
+      return attempt();
+    }
+  };
+
+  for (let i = 0; i < sentences.length; i += 1) {
+    try {
+      const chunk = await synthesizeWithRetry(sentences[i]);
+      if (!chunk || !chunk.audioBase64) {
+        throw new Error('Empty TTS audio chunk.');
+      }
       mimeType = chunk.mimeType || 'audio/mpeg';
       sendJson(ws, {
         type: 'voice_call_tts_sentence',
@@ -205,8 +231,12 @@ const streamVoiceCallTtsOverWs = async (ws, requestId, result, payload, ttsConte
         mimeType: chunk.mimeType || 'audio/mpeg',
       });
       sentAnySentence = true;
+    } catch (sentenceError) {
+      ttsError = ttsError || 'Sebagian suara gagal diproses, coba lagi.';
     }
-  } catch {
+  }
+
+  if (!sentAnySentence) {
     ttsError = 'Voice output is temporarily unavailable.';
   }
 
@@ -243,6 +273,8 @@ const registerVoiceCallSocket = server => {
     }
 
     wss.handleUpgrade(request, socket, head, ws => {
+      // Set by the upgrade guard in registerRealtimeSockets from the verified token.
+      ws.authUserId = request.authUserId || '';
       wss.emit('connection', ws);
     });
   });
@@ -272,6 +304,10 @@ const registerVoiceCallSocket = server => {
           message: 'Invalid websocket payload.',
         });
         return;
+      }
+      // Always act for the signed-in user, never for a userId the client typed in.
+      if (parsed && typeof parsed === 'object') {
+        parsed.userId = ws.authUserId;
       }
 
       const msgType = parsed?.type;
@@ -319,6 +355,12 @@ const registerVoiceCallSocket = server => {
         ws.voiceFluxStreams.set(streamId, streamEntry);
         try {
           const user = await User.findById(userId);
+          if (user) {
+            try {
+              const warmContext = buildTtsContext(user, voicePrefetchPayload);
+              prewarmDeepgramTts(warmContext.resolvedModel).catch(() => {});
+            } catch {}
+          }
           const sttLanguage = user
             ? resolveDeepgramSttLanguage(resolveLearningLanguage(user))
             : undefined;

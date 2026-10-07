@@ -1,11 +1,20 @@
 const { getEnv } = require('../config/env');
+const {
+  getAlternateRegion,
+  getListenFluxWsUrl,
+  getListenRestUrl,
+  getSpeakUrl,
+  hasStickyRegion,
+  isDeepgramHost,
+  isRetryableNetworkError,
+  regionFromHost,
+  rememberWorkingRegion,
+  resolveRegion,
+  swapUrlRegion,
+  ttsSupportsSpeed,
+} = require('../config/deepgramEndpoints');
 const { stripMarkdownForTts } = require('./ttsTextUtils');
 const WebSocket = require('ws');
-
-const DEEPGRAM_BASE_URL = 'https://api.eu.deepgram.com/v1/listen';
-const DEEPGRAM_WS_URL = 'wss://api.eu.deepgram.com/v2/listen';
-const DEEPGRAM_TTS_URL = 'https://api.eu.deepgram.com/v1/speak';
-const DEEPGRAM_TTS_SUPPORTS_SPEED = !DEEPGRAM_TTS_URL.includes('api.eu.deepgram.com');
 const DEFAULT_MODEL = 'flux-general-multi';
 const DEFAULT_LANGUAGE = 'multi';
 const DEFAULT_TTS_MODEL = 'aura-2-thalia-en';
@@ -48,27 +57,47 @@ const resolveTtsFormat = (encodingOverride = null) => {
   };
 };
 /** REST STT: one round-trip, reliable for short M4A clips from the app */
-const DEEPGRAM_STT_TIMEOUT_MS = Number(getEnv('DEEPGRAM_STT_TIMEOUT_MS', '8000')) || 8000;
-const DEEPGRAM_TTS_TIMEOUT_MS = Number(getEnv('DEEPGRAM_TTS_TIMEOUT_MS', '6000')) || 6000;
-const DEEPGRAM_CONNECT_TIMEOUT_MS = Number(getEnv('DEEPGRAM_CONNECT_TIMEOUT_MS', '6000')) || 6000;
+const DEEPGRAM_STT_TIMEOUT_MS = Number(getEnv('DEEPGRAM_STT_TIMEOUT_MS', '10000')) || 10000;
+const DEEPGRAM_TTS_TIMEOUT_MS = Number(getEnv('DEEPGRAM_TTS_TIMEOUT_MS', '12000')) || 12000;
+/** Aggressive TTS connect — never burn 8s on a dead primary region. */
+const DEEPGRAM_TTS_FAILOVER_TIMEOUT_MS =
+  Number(getEnv('DEEPGRAM_TTS_FAILOVER_TIMEOUT_MS', '800')) || 800;
+/** After primary fails fast, give the working alternate enough time for cold TLS + headers. */
+const DEEPGRAM_TTS_FALLBACK_TIMEOUT_MS =
+  Number(getEnv('DEEPGRAM_TTS_FALLBACK_TIMEOUT_MS', '2500')) || 2500;
+const DEEPGRAM_CONNECT_TIMEOUT_MS = Number(getEnv('DEEPGRAM_CONNECT_TIMEOUT_MS', '3500')) || 3500;
 /** Realtime WS often rejects non-linear16 streams; keep off by default for speed + stability */
 const DEEPGRAM_REALTIME_STT_FAIL_FAST_MS = 2800;
 
 let deepgramDispatcher = null;
+let deepgramFetchImpl = globalThis.fetch.bind(globalThis);
 try {
-  const { Agent } = require('undici');
+  const undici = require('undici');
   const forceIpv4 = getEnv('DEEPGRAM_FORCE_IPV4', 'true').toLowerCase() === 'true';
-  deepgramDispatcher = new Agent({
+  // Must use undici.fetch with undici.Agent — Node's global fetch rejects a
+  // foreign Agent (UND_ERR_INVALID_ARG: invalid onRequestStart method).
+  if (typeof undici.fetch === 'function') {
+    deepgramFetchImpl = undici.fetch.bind(undici);
+  }
+  deepgramDispatcher = new undici.Agent({
     connect: {
-      timeout: DEEPGRAM_CONNECT_TIMEOUT_MS,
-      ...(forceIpv4 ? { family: 4 } : { autoSelectFamily: true, autoSelectFamilyAttemptTimeout: 500 }),
+      // Keep connect budget at/under TTS failover so dead regions fail fast.
+      timeout: Math.min(
+        DEEPGRAM_CONNECT_TIMEOUT_MS,
+        Math.max(DEEPGRAM_TTS_FAILOVER_TIMEOUT_MS, 700),
+        2000,
+      ),
+      ...(forceIpv4 ? { family: 4 } : { autoSelectFamily: true, autoSelectFamilyAttemptTimeout: 400 }),
     },
     keepAliveTimeout: 60_000,
     keepAliveMaxTimeout: 60_000,
-    connections: 32,
+    connections: 8,
     pipelining: 1,
   });
-} catch {}
+} catch (error) {
+  deepgramDispatcher = null;
+  console.warn('[deepgram] undici Agent unavailable, using global fetch:', error?.message || error);
+}
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -81,32 +110,105 @@ const parseNetworkError = error => {
   return 'NETWORK_ERROR: Unknown network issue';
 };
 
-const deepgramFetch = async (url, options, retries = 1, timeoutMs = DEEPGRAM_STT_TIMEOUT_MS) => {
+const requestDeepgramFetch = async (url, options, timeoutMs) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await deepgramFetchImpl(url, {
+      ...options,
+      signal: controller.signal,
+      ...(deepgramDispatcher ? { dispatcher: deepgramDispatcher } : {}),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const deepgramFetch = async (
+  url,
+  options,
+  retries = 1,
+  timeoutMs = DEEPGRAM_STT_TIMEOUT_MS,
+  fetchOptions = {},
+) => {
   let lastError = null;
+  let requestUrl = url;
+  const isTts = Boolean(fetchOptions.tts);
+  const sticky = hasStickyRegion();
+  /** TTS opener must fail over in <1s; never wait full connect timeout on a dead region. */
+  const failoverMs = isTts
+    ? DEEPGRAM_TTS_FAILOVER_TIMEOUT_MS
+    : Number(getEnv('DEEPGRAM_FAILOVER_TIMEOUT_MS', '3500')) || 3500;
+  const primaryTimeoutMs = Math.min(timeoutMs, failoverMs, isTts ? failoverMs : DEEPGRAM_CONNECT_TIMEOUT_MS);
+  let retryCount = 0;
+  let retryRegion = null;
+  const requestStartedAt = Date.now();
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        ...(deepgramDispatcher ? { dispatcher: deepgramDispatcher } : {}),
-      });
-      clearTimeout(timeout);
+      const attemptTimeout = attempt === 0 ? primaryTimeoutMs : timeoutMs;
+      const response = await requestDeepgramFetch(requestUrl, options, attemptTimeout);
+      const host = new URL(requestUrl).host;
+      rememberWorkingRegion(regionFromHost(host));
+      response.__deepgramMeta = {
+        ttsRegion: regionFromHost(host) || resolveRegion(),
+        ttsRetryCount: retryCount,
+        ttsRetryRegion: retryRegion,
+        ttsConnectionMs: Date.now() - requestStartedAt,
+        ttsConnectionReuse: sticky ? 1 : 0,
+      };
       return response;
     } catch (error) {
-      clearTimeout(timeout);
       lastError = error;
       if (attempt < retries) {
-        await sleep(300 * (attempt + 1));
+        await sleep(150 * (attempt + 1));
       }
     }
+  }
+
+  try {
+    const parsed = new URL(requestUrl);
+    if (isDeepgramHost(parsed.host)) {
+      const fallbackRegion = getAlternateRegion(regionFromHost(parsed.host) || resolveRegion());
+      const fallbackUrl = swapUrlRegion(requestUrl, fallbackRegion);
+      if (fallbackUrl !== requestUrl) {
+        // TTS: primary already failed fast; give alternate cold-connect budget, not full body timeout.
+        const fallbackTimeoutMs = isTts
+          ? Math.max(failoverMs, DEEPGRAM_TTS_FALLBACK_TIMEOUT_MS)
+          : timeoutMs;
+        retryCount = 1;
+        retryRegion = fallbackRegion;
+        console.warn('[deepgram] retrying request on alternate region', {
+          from: parsed.host,
+          to: new URL(fallbackUrl).host,
+          message: lastError?.message,
+          retryable: isRetryableNetworkError(lastError),
+          tts: isTts,
+          sticky,
+          primaryTimeoutMs,
+          fallbackTimeoutMs,
+        });
+        const response = await requestDeepgramFetch(fallbackUrl, options, fallbackTimeoutMs);
+        rememberWorkingRegion(fallbackRegion);
+        response.__deepgramMeta = {
+          ttsRegion: fallbackRegion,
+          ttsRetryCount: retryCount,
+          ttsRetryRegion: retryRegion,
+          ttsConnectionMs: Date.now() - requestStartedAt,
+          ttsConnectionReuse: 0,
+        };
+        return response;
+      }
+    }
+  } catch (fallbackError) {
+    lastError = fallbackError;
   }
 
   const networkDetails = parseNetworkError(lastError);
   const error = new Error(`Deepgram network request failed (${networkDetails})`);
   error.code = 'DEEPGRAM_NETWORK_FAILED';
+  error.ttsRetryCount = retryCount;
+  error.ttsRetryRegion = retryRegion;
   throw error;
 };
 
@@ -133,8 +235,8 @@ const normalizeBase64Audio = rawValue => {
 };
 
 /** Flux v2 /listen — containerized audio (e.g. m4a) omits encoding; raw PCM sets encoding + sample_rate */
-const buildDeepgramFluxListenUrl = ({ language: languageOverride } = {}) => {
-  const url = new URL(DEEPGRAM_WS_URL);
+const buildDeepgramFluxListenUrl = ({ language: languageOverride, region = resolveRegion() } = {}) => {
+  const url = new URL(getListenFluxWsUrl(region));
   url.searchParams.set('model', getEnv('DEEPGRAM_MODEL', DEFAULT_MODEL));
   const eotMs = Math.min(10000, Math.max(500, Number(getEnv('DEEPGRAM_EOT_TIMEOUT_MS', '700')) || 700));
   url.searchParams.set('eot_timeout_ms', String(eotMs));
@@ -184,7 +286,7 @@ const createFluxStreamingSttSession = ({ apiKey, onPartial, language }) =>
       headers: {
         Authorization: `Token ${apiKey}`,
       },
-      handshakeTimeout: Number(getEnv('DEEPGRAM_STREAM_CONNECT_TIMEOUT_MS', '3000')) || 3000,
+      handshakeTimeout: Number(getEnv('DEEPGRAM_STREAM_CONNECT_TIMEOUT_MS', '5000')) || 5000,
     });
 
     const handleMessage = raw => {
@@ -378,7 +480,7 @@ const transcribeAudioWithDeepgramRest = async ({
     typeof languageOverride === 'string' && languageOverride.trim()
       ? languageOverride.trim()
       : getEnv('DEEPGRAM_LANGUAGE', DEFAULT_LANGUAGE);
-  const url = new URL(DEEPGRAM_BASE_URL);
+  const url = new URL(getListenRestUrl());
   url.searchParams.set('model', model);
   url.searchParams.set('language', language);
   url.searchParams.set('smart_format', 'true');
@@ -399,7 +501,7 @@ const transcribeAudioWithDeepgramRest = async ({
   );
 
   if (!response.ok && language === 'multi') {
-    const fallbackUrl = new URL(DEEPGRAM_BASE_URL);
+    const fallbackUrl = new URL(getListenRestUrl());
     fallbackUrl.searchParams.set('model', model);
     fallbackUrl.searchParams.set('detect_language', 'true');
     fallbackUrl.searchParams.set('smart_format', 'true');
@@ -494,7 +596,7 @@ const buildPronunciationText = (text, pronunciations = []) => {
 
 const buildDeepgramTtsUrl = ({ model, speed = 1, encoding = 'opus' } = {}) => {
   const format = resolveTtsFormat(encoding);
-  const url = new URL(DEEPGRAM_TTS_URL);
+  const url = new URL(getSpeakUrl());
   url.searchParams.set('model', model || getEnv('DEEPGRAM_TTS_MODEL', DEFAULT_TTS_MODEL));
   url.searchParams.set('encoding', format.encoding);
   if (format.container) {
@@ -509,7 +611,7 @@ const buildDeepgramTtsUrl = ({ model, speed = 1, encoding = 'opus' } = {}) => {
   if (format.encoding === 'mp3' && MP3_BIT_RATE > 0) {
     url.searchParams.set('bit_rate', String(MP3_BIT_RATE));
   }
-  if (DEEPGRAM_TTS_SUPPORTS_SPEED) {
+  if (ttsSupportsSpeed()) {
     const speedValue = Number(speed);
     if (Number.isFinite(speedValue) && speedValue >= 0.7 && speedValue <= 1.5) {
       url.searchParams.set('speed', String(speedValue));
@@ -601,6 +703,8 @@ const synthesizeSpeechWithDeepgram = async ({
   onChunk,
   encoding,
   minChunkBytes,
+  ttsWsSession = null,
+  onTtsMeta = null,
 }) => {
   const apiKey = getEnv('DEEPGRAM_API_KEY');
   if (!apiKey) {
@@ -628,21 +732,89 @@ const synthesizeSpeechWithDeepgram = async ({
       ? encoding.trim().toLowerCase()
       : String(getEnv('DEEPGRAM_TTS_ENCODING', DEFAULT_TTS_ENCODING) || DEFAULT_TTS_ENCODING).toLowerCase();
   const format = resolveTtsFormat(requestedEncoding);
+  const chunkMin =
+    typeof minChunkBytes === 'number' && minChunkBytes >= 0 ? minChunkBytes : MIN_TTS_STREAM_BYTES;
+  const emitMeta = meta => {
+    if (typeof onTtsMeta === 'function') {
+      try {
+        onTtsMeta(meta);
+      } catch {}
+    }
+  };
+
+  // Prefer persistent WebSocket session for realtime voice (connection reuse).
+  if (ttsWsSession && typeof ttsWsSession.speak === 'function' && !ttsWsSession.destroyed) {
+    const queuedAt = Date.now();
+    console.log('[deepgram-tts] request', {
+      model: model || getEnv('DEEPGRAM_TTS_MODEL', DEFAULT_TTS_MODEL),
+      encoding: format.encoding,
+      transport: 'websocket',
+      text: finalText,
+      streaming: Boolean(onChunk),
+      minChunkBytes: chunkMin,
+    });
+    try {
+      const wsResult = await ttsWsSession.speak(finalText, {
+        onChunk,
+        minChunkBytes: chunkMin,
+        onMeta: emitMeta,
+      });
+      const ttsMeta = {
+        ttsConnectionReuse: wsResult.ttsConnectionReuse,
+        ttsRegion: wsResult.ttsRegion,
+        ttsConnectionMs: wsResult.ttsConnectionMs,
+        ttsServerTTFBMs: wsResult.ttsServerTTFBMs,
+        ttsRetryCount: wsResult.ttsRetryCount,
+        ttsRetryRegion: wsResult.ttsRetryRegion,
+        ttsRequestQueuedMs: wsResult.ttsRequestQueuedMs ?? Date.now() - queuedAt,
+        ttsRequestToFirstAudioMs: wsResult.ttsRequestToFirstAudioMs,
+        transport: 'websocket',
+      };
+      emitMeta(ttsMeta);
+      console.log('[deepgram-tts] response', {
+        ok: true,
+        transport: 'websocket',
+        ...ttsMeta,
+      });
+      const streamedOnly = Boolean(onChunk);
+      return {
+        audioBase64: streamedOnly ? '' : (wsResult.audioBuffer || Buffer.alloc(0)).toString('base64'),
+        mimeType: wsResult.format?.mimeType || format.mimeType,
+        encoding: wsResult.format?.encoding || format.encoding,
+        container: wsResult.format?.container || format.container,
+        sampleRate: wsResult.format?.sampleRate || format.sampleRate,
+        fileExt: wsResult.format?.fileExt || format.fileExt,
+        streamed: streamedOnly,
+        modelUsed: model || DEFAULT_TTS_MODEL,
+        speedUsed: String(speedValue),
+        ttsMeta,
+      };
+    } catch (wsError) {
+      console.warn('[deepgram-tts] websocket speak failed, falling back to http', {
+        message: wsError?.message,
+        code: wsError?.code,
+      });
+      // Fall through to HTTP keep-alive path for this phrase only.
+    }
+  }
+
   const url = buildDeepgramTtsUrl({ model, speed: speedValue, encoding: format.encoding });
   console.log('[deepgram-tts] request', {
     model: url.searchParams.get('model'),
     encoding: format.encoding,
     container: format.container || 'default',
     sampleRate: format.sampleRate,
+    transport: 'http',
+    stickyRegion: hasStickyRegion() ? resolveRegion() : null,
     ...(format.encoding === 'opus' ? { bitRate: OPUS_BIT_RATE } : {}),
     ...(format.encoding === 'mp3' ? { bitRate: MP3_BIT_RATE } : {}),
-    ...(DEEPGRAM_TTS_SUPPORTS_SPEED ? { speed: speedValue } : {}),
+    ...(ttsSupportsSpeed() ? { speed: speedValue } : {}),
     text: finalText,
     streaming: Boolean(onChunk),
-    minChunkBytes:
-      typeof minChunkBytes === 'number' && minChunkBytes >= 0 ? minChunkBytes : MIN_TTS_STREAM_BYTES,
+    minChunkBytes: chunkMin,
   });
 
+  const responseStartedAt = Date.now();
   const response = await deepgramFetch(
     url.toString(),
     {
@@ -655,11 +827,20 @@ const synthesizeSpeechWithDeepgram = async ({
     },
     0,
     DEEPGRAM_TTS_TIMEOUT_MS,
+    { tts: true },
   );
+  const meta = response.__deepgramMeta || {};
+  const ttsMeta = {
+    ...meta,
+    transport: 'http',
+    ttsServerTTFBMs: meta.ttsConnectionMs || Date.now() - responseStartedAt,
+  };
+  emitMeta(ttsMeta);
   console.log('[deepgram-tts] response', {
     ok: response.ok,
     status: response.status,
     contentType: response.headers.get('content-type'),
+    ...ttsMeta,
   });
 
   if (!response.ok) {
@@ -670,11 +851,7 @@ const synthesizeSpeechWithDeepgram = async ({
     throw error;
   }
 
-  const audioBuffer = await streamDeepgramTtsResponse(
-    response,
-    onChunk,
-    typeof minChunkBytes === 'number' && minChunkBytes >= 0 ? minChunkBytes : undefined,
-  );
+  const audioBuffer = await streamDeepgramTtsResponse(response, onChunk, chunkMin);
   const streamedOnly = Boolean(onChunk);
   return {
     audioBase64: streamedOnly ? '' : audioBuffer.toString('base64'),
@@ -686,6 +863,7 @@ const synthesizeSpeechWithDeepgram = async ({
     streamed: streamedOnly,
     modelUsed: response.headers.get('dg-model-name') || model || DEFAULT_TTS_MODEL,
     speedUsed: response.headers.get('dg-speed-used') || String(speedValue),
+    ttsMeta,
   };
 };
 
@@ -696,9 +874,18 @@ const prewarmDeepgramTts = async (model = DEFAULT_TTS_MODEL) => {
   if (deepgramTtsPrewarmCache.has(key)) {
     return deepgramTtsPrewarmCache.get(key);
   }
-  const promise = synthesizeSpeechWithDeepgram({ text: 'Hi.', model: key, speed: 1 })
+  const promise = synthesizeSpeechWithDeepgram({
+    text: 'Hi.',
+    model: key,
+    speed: 1,
+    encoding: 'mp3',
+  })
     .then(result => {
-      console.log('[deepgram-tts] prewarm ok', { model: key });
+      console.log('[deepgram-tts] prewarm ok', {
+        model: key,
+        ttsRegion: result?.ttsMeta?.ttsRegion || resolveRegion(),
+        sticky: hasStickyRegion(),
+      });
       return result;
     })
     .catch(error => {
@@ -711,6 +898,7 @@ const prewarmDeepgramTts = async (model = DEFAULT_TTS_MODEL) => {
 };
 
 module.exports = {
+  deepgramFetch,
   transcribeAudioWithDeepgram,
   normalizeBase64Audio,
   synthesizeSpeechWithDeepgram,
