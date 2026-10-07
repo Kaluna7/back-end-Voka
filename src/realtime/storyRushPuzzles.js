@@ -269,12 +269,19 @@ const serializeChallenge = challenge => ({
 });
 
 const parseSubmit = payload => {
-  const correctWords = Math.max(0, Math.floor(Number(payload.correctWords) || 0));
-  const wrongWords = Math.max(0, Math.floor(Number(payload.wrongWords) || 0));
   const totalWords = Math.max(1, Math.floor(Number(payload.totalWords) || 1));
+  // Never trust more read words than the story has.
+  const correctWords = Math.min(totalWords, Math.max(0, Math.floor(Number(payload.correctWords) || 0)));
+  const wrongWords = Math.min(totalWords, Math.max(0, Math.floor(Number(payload.wrongWords) || 0)));
   const finishMs = Math.max(0, Math.floor(Number(payload.finishMs) || READ_ROUND_MS));
   return { correctWords, wrongWords, totalWords, finishMs };
 };
+
+/** Share of the story that must actually be read before "Done" earns speed or finish bonuses. */
+const MIN_READ_FOR_BONUS = 0.6;
+
+/** True when the player really read enough of the story to count as finishing it. */
+const hasReadEnough = submit => submit.correctWords / submit.totalWords >= MIN_READ_FOR_BONUS;
 
 const calcRoundPoints = (submit, finishRank, finishedInTime) => {
   if (!finishedInTime) {
@@ -282,8 +289,13 @@ const calcRoundPoints = (submit, finishRank, finishedInTime) => {
   }
   const accuracyRatio = Math.min(1, submit.correctWords / submit.totalWords);
   const accuracyPoints = Math.round(accuracyRatio * MAX_ACCURACY_POINTS);
+  // Pressing "Done" without reading earns nothing extra: speed and finish bonuses need
+  // most of the story read, and speed scales with how much was read.
+  if (!hasReadEnough(submit) || finishRank == null) {
+    return { accuracyPoints, speedPoints: 0, rankBonus: 0, total: accuracyPoints };
+  }
   const timeLeftMs = Math.max(0, READ_ROUND_MS - submit.finishMs);
-  const speedPoints = Math.round((timeLeftMs / READ_ROUND_MS) * MAX_SPEED_POINTS);
+  const speedPoints = Math.round((timeLeftMs / READ_ROUND_MS) * MAX_SPEED_POINTS * accuracyRatio);
   const rankBonus = POINTS_FINISH_RANK[Math.min(finishRank, POINTS_FINISH_RANK.length - 1)] || 0;
   const total = accuracyPoints + speedPoints + rankBonus;
   return { accuracyPoints, speedPoints, rankBonus, total };
@@ -303,6 +315,7 @@ module.exports = {
   buildChallenge,
   serializeChallenge,
   parseSubmit,
+  hasReadEnough,
   calcRoundPoints,
   calcStoryRushExp,
   randomBotName,

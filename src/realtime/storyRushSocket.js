@@ -6,6 +6,7 @@ const {
   serializeChallenge,
   randomBotName,
   parseSubmit,
+  hasReadEnough,
   calcRoundPoints,
   calcStoryRushExp,
 } = require('./storyRushPuzzles');
@@ -180,11 +181,15 @@ const registerStoryRushSocket = server => {
 
   const pushLeaderboard = room => {
     const leaderboard = [...room.players]
+      // Points decide the order; finishing only breaks ties.
       .sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
         if (a.finished !== b.finished) {
           return a.finished ? -1 : 1;
         }
-        return b.score - a.score;
+        return (a.finishMs || Infinity) - (b.finishMs || Infinity);
       })
       .map((player, index) => ({
         rank: index + 1,
@@ -278,8 +283,12 @@ const registerStoryRushSocket = server => {
       return { finishedInTime: false, total: 0, accuracyPoints: 0, speedPoints: 0, rankBonus: 0 };
     }
 
-    room.finishCount += 1;
-    const finishRank = room.finishCount - 1;
+    // Only players who really read the story take a finishing place (1st, 2nd...).
+    let finishRank = null;
+    if (finishedInTime && hasReadEnough(submit)) {
+      room.finishCount += 1;
+      finishRank = room.finishCount - 1;
+    }
     const points = calcRoundPoints(submit, finishRank, finishedInTime);
     player.finished = true;
     player.finishedInTime = finishedInTime;
