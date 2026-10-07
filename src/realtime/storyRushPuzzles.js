@@ -1,3 +1,5 @@
+const { normalizeAnyAnswer, acceptedForms } = require('../services/aiGamePuzzleService');
+const pickAi = items => items[Math.floor(Math.random() * items.length)];
 const { randomBotName } = require('./sudowordPuzzles');
 
 const STORY_BANK = [
@@ -248,7 +250,19 @@ const pickStory = (learningLanguage = 'English') => {
   return bank[Math.floor(Math.random() * bank.length)];
 };
 
-const buildChallenge = (learningLanguage = 'English') => {
+const buildChallenge = (learningLanguage = 'English', aiItems = null) => {
+  if (Array.isArray(aiItems) && aiItems.length) {
+    const item = pickAi(aiItems);
+    return {
+      id: `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      title: item.title.text,
+      titleRoman: item.title.roman || '',
+      body: item.body.text,
+      bodyRoman: item.body.roman || '',
+      roundEndsAt: Date.now() + READ_ROUND_MS,
+      wordCount: item.body.text.split(/\s+/).filter(Boolean).length,
+    };
+  }
   const story = pickStory(learningLanguage);
   const roundEndsAt = Date.now() + READ_ROUND_MS;
   return {
@@ -263,7 +277,9 @@ const buildChallenge = (learningLanguage = 'English') => {
 const serializeChallenge = challenge => ({
   id: challenge.id,
   title: challenge.title,
+  titleRoman: challenge.titleRoman || '',
   body: challenge.body,
+  bodyRoman: challenge.bodyRoman || '',
   roundEndsAt: challenge.roundEndsAt,
   wordCount: challenge.wordCount,
 });

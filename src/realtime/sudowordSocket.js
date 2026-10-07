@@ -1,5 +1,13 @@
 const { WebSocketServer } = require('ws');
 const {
+  getGamePuzzlesWithin,
+  prewarmGamePuzzles,
+  usesAiPuzzles,
+} = require('../services/aiGamePuzzleService');
+const GAME_KEY = 'sudoword';
+/** Longest a match waits for AI questions before falling back to the built-in ones. */
+const PUZZLE_WAIT_MS = 25000;
+const {
   MATCH_DURATION_MS,
   POINTS_CORRECT,
   POINTS_WRONG,
@@ -55,6 +63,11 @@ const registerSudowordSocket = server => {
   const rooms = new Map();
   const socketMeta = new Map();
 
+  // Matchmaking lanes: players only meet others learning the same language.
+  const laneOf = entry => entry?.learningLanguage || 'English';
+  const sameLane = ref => (ref ? queue.filter(entry => laneOf(entry) === laneOf(ref)) : []);
+  const headLaneSize = () => sameLane(queue[0]).length;
+
   const stopQueueTicker = () => {
     if (queueTickInterval) {
       clearInterval(queueTickInterval);
@@ -104,7 +117,8 @@ const registerSudowordSocket = server => {
   };
 
   const buildRoster = (targetCount, viewerId) => {
-    const humans = queue.slice(0, TARGET_PLAYERS);
+    const viewer = queue.find(entry => entry.playerId === viewerId);
+    const humans = sameLane(viewer || queue[0]).slice(0, TARGET_PLAYERS);
     const roster = humans.map(entry => ({
       id: entry.playerId,
       name: entry.displayName,
@@ -235,7 +249,7 @@ const registerSudowordSocket = server => {
   };
 
   const assignChallenge = (player, room) => {
-    player.challenge = buildChallenge(room.learningLanguage);
+    player.challenge = buildChallenge(room.learningLanguage, room.aiItems);
     return player.challenge;
   };
 
@@ -300,6 +314,18 @@ const registerSudowordSocket = server => {
 
   const startMatch = room => {
     if (room.started || room.ended) {
+      return;
+    }
+    if (!room.puzzlesSettled) {
+      if (!room.waitingForPuzzles) {
+        room.waitingForPuzzles = true;
+        room.players.forEach(player => {
+          if (player.socket) {
+            sendJson(player.socket, { type: 'questions_loading', language: room.learningLanguage });
+          }
+        });
+        room.puzzlesReady.then(() => startMatch(room));
+      }
       return;
     }
     room.started = true;
@@ -396,6 +422,14 @@ const registerSudowordSocket = server => {
     };
 
     rooms.set(roomId, room);
+    room.aiItems = null;
+    room.puzzlesSettled = !usesAiPuzzles(GAME_KEY, room.learningLanguage);
+    room.puzzlesReady = room.puzzlesSettled
+      ? Promise.resolve()
+      : getGamePuzzlesWithin(GAME_KEY, room.learningLanguage, PUZZLE_WAIT_MS).then(items => {
+          room.aiItems = items;
+          room.puzzlesSettled = true;
+        });
 
     players.forEach(player => {
       if (player.socket) {
@@ -416,7 +450,8 @@ const registerSudowordSocket = server => {
     queueStartedAt = null;
     lastRosterTarget = 0;
 
-    const batch = queue.splice(0, Math.min(queue.length, TARGET_PLAYERS));
+    const batch = sameLane(queue[0]).slice(0, TARGET_PLAYERS);
+    batch.forEach(entry => queue.splice(queue.indexOf(entry), 1));
     const botsNeeded = Math.max(0, TARGET_PLAYERS - batch.length);
     ensureFillSlots(botsNeeded);
     const botSlots = fillSlots.slice(0, botsNeeded);
@@ -431,6 +466,11 @@ const registerSudowordSocket = server => {
     });
     createRoom(batch, botSlots);
     queueFlushing = false;
+    // Players in other language lanes keep searching, without restarting their wait.
+    if (queue.length > 0) {
+      queueStartedAt = Math.min(...queue.map(entry => entry.joinedAt || Date.now()));
+      scheduleQueueMatch();
+    }
   };
 
   const processQueueTick = () => {
@@ -447,9 +487,10 @@ const registerSudowordSocket = server => {
     }
 
     const elapsed = Date.now() - queueStartedAt;
-    let target = Math.max(1, Math.min(queue.length, TARGET_PLAYERS));
+    const laneSize = headLaneSize();
+    let target = Math.max(1, Math.min(laneSize, TARGET_PLAYERS));
 
-    if (queue.length >= TARGET_PLAYERS) {
+    if (laneSize >= TARGET_PLAYERS) {
       target = TARGET_PLAYERS;
     } else {
       for (const stage of FILL_STAGES) {
@@ -495,7 +536,7 @@ const registerSudowordSocket = server => {
     }
 
     // Keep progressing roster; never reset back to 1 when another player joins (avoids blink).
-    const nextTarget = Math.max(lastRosterTarget || 1, Math.min(queue.length, TARGET_PLAYERS));
+    const nextTarget = Math.max(lastRosterTarget || 1, Math.min(headLaneSize(), TARGET_PLAYERS));
     if (nextTarget > lastRosterTarget) {
       lastRosterTarget = nextTarget;
       sendSearchRoster(nextTarget);
@@ -577,7 +618,8 @@ const registerSudowordSocket = server => {
         const playerId = String(payload.playerId || `guest_${Date.now()}`);
         const displayName = String(payload.displayName || 'Player').slice(0, 24);
         const learningLanguage = parseJoinLearningLanguage(payload);
-        const entry = { socket, playerId, displayName, learningLanguage };
+        const entry = { socket, playerId, displayName, learningLanguage, joinedAt: Date.now() };
+        prewarmGamePuzzles(GAME_KEY, learningLanguage);
         queue.push(entry);
         socketMeta.set(socket, { playerId, roomId: null });
         const searchEndsAt = Date.now() + MAX_SEARCH_MS;

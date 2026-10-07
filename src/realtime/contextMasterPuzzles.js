@@ -1,3 +1,5 @@
+const { normalizeAnyAnswer, acceptedForms } = require('../services/aiGamePuzzleService');
+const pickAi = items => items[Math.floor(Math.random() * items.length)];
 const { randomBotName } = require('./sudowordPuzzles');
 
 const QUESTION_BANK = [
@@ -3366,7 +3368,26 @@ const formatOption = word => String(word || '').trim().toLowerCase();
 
 const pickQuestion = () => QUESTION_BANK[Math.floor(Math.random() * QUESTION_BANK.length)];
 
-const buildChallenge = () => {
+const buildChallenge = (_learningLanguage = 'English', aiItems = null) => {
+  if (Array.isArray(aiItems) && aiItems.length) {
+    const item = pickAi(aiItems);
+    const choices = shuffleArray([item.correct, ...item.wrong]);
+    const readings = {};
+    choices.forEach(choice => {
+      if (choice.roman) {
+        readings[choice.text] = choice.roman;
+      }
+    });
+    return {
+      id: `cm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ai: true,
+      sentence: item.sentence.text,
+      sentenceRoman: item.sentence.roman || '',
+      options: choices.map(choice => choice.text),
+      readings,
+      correct: normalizeAnyAnswer(item.correct.text),
+    };
+  }
   const [sentence, correctWord, wrongWords] = pickQuestion();
   const displayOptions = shuffleArray([
     formatOption(correctWord),
@@ -3383,10 +3404,16 @@ const buildChallenge = () => {
 const serializeChallenge = challenge => ({
   id: challenge.id,
   sentence: challenge.sentence,
+  sentenceRoman: challenge.sentenceRoman || '',
+  readings: challenge.readings || {},
   options: challenge.options,
 });
 
 const isCorrectAnswer = (challenge, answer) => {
+  if (challenge.ai) {
+    const normalized = normalizeAnyAnswer(answer);
+    return Boolean(normalized) && normalized === challenge.correct;
+  }
   const normalized = normalizeAnswer(answer);
   if (!normalized || normalized.length < 2) {
     return false;
@@ -3395,6 +3422,13 @@ const isCorrectAnswer = (challenge, answer) => {
 };
 
 const pickBotAnswer = (challenge, shouldBeCorrect = true) => {
+  if (challenge.ai) {
+    const right = challenge.options.find(opt => normalizeAnyAnswer(opt) === challenge.correct);
+    const wrong = challenge.options.filter(opt => normalizeAnyAnswer(opt) !== challenge.correct);
+    return shouldBeCorrect || wrong.length === 0
+      ? right || challenge.options[0]
+      : wrong[Math.floor(Math.random() * wrong.length)];
+  }
   if (shouldBeCorrect) {
     return (
       challenge.options.find(opt => normalizeAnswer(opt) === challenge.correct) ||

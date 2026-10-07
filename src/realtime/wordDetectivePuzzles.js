@@ -1,3 +1,5 @@
+const { normalizeAnyAnswer, acceptedForms } = require('../services/aiGamePuzzleService');
+const pickAi = items => items[Math.floor(Math.random() * items.length)];
 const { randomBotName, SYNONYM_BANK } = require('./synowordPuzzles');
 
 const EXTRA_SYNONYM_BANK = [
@@ -147,7 +149,18 @@ const normalizeAnswer = value =>
 
 const pickEntry = () => CLUE_BANK[Math.floor(Math.random() * CLUE_BANK.length)];
 
-const buildChallenge = () => {
+const buildChallenge = (_learningLanguage = 'English', aiItems = null) => {
+  if (Array.isArray(aiItems) && aiItems.length) {
+    const item = pickAi(aiItems);
+    return {
+      id: `wd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ai: true,
+      clue: item.clue.text,
+      clueRoman: item.clue.roman || '',
+      base: '',
+      accepted: acceptedForms([item.answer, ...(item.alternatives || [])]),
+    };
+  }
   const entry = pickEntry();
   const accepted = [...new Set(entry.synonyms.map(normalizeAnswer).filter(w => w.length >= 2))];
   return {
@@ -161,9 +174,14 @@ const buildChallenge = () => {
 const serializeChallenge = challenge => ({
   id: challenge.id,
   clue: challenge.clue,
+  clueRoman: challenge.clueRoman || '',
 });
 
 const isCorrectAnswer = (challenge, answer) => {
+  if (challenge.ai) {
+    const normalized = normalizeAnyAnswer(answer);
+    return Boolean(normalized) && challenge.accepted.includes(normalized);
+  }
   const normalized = normalizeAnswer(answer);
   if (!normalized || normalized.length < 2) {
     return false;
@@ -175,7 +193,7 @@ const isCorrectAnswer = (challenge, answer) => {
 };
 
 const pickBotAnswer = (challenge, shouldBeCorrect = true) => {
-  const pool = challenge.accepted.filter(word => word.length >= 2);
+  const pool = challenge.accepted.filter(word => word.length >= (challenge.ai ? 1 : 2));
   if (shouldBeCorrect || pool.length === 0) {
     return pool[Math.floor(Math.random() * pool.length)] || 'WORD';
   }

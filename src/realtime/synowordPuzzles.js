@@ -1,3 +1,5 @@
+const { normalizeAnyAnswer, acceptedForms } = require('../services/aiGamePuzzleService');
+const pickAi = items => items[Math.floor(Math.random() * items.length)];
 const { randomBotName } = require('./sudowordPuzzles');
 
 const SYNONYM_BANK = [
@@ -77,7 +79,18 @@ const pickPair = (learningLanguage = 'English') => {
   return bank[Math.floor(Math.random() * bank.length)];
 };
 
-const buildChallenge = (learningLanguage = 'English') => {
+const buildChallenge = (learningLanguage = 'English', aiItems = null) => {
+  if (Array.isArray(aiItems) && aiItems.length) {
+    const item = pickAi(aiItems);
+    return {
+      id: `syn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ai: true,
+      prompt: item.word.text,
+      promptRoman: item.word.roman || '',
+      accepted: acceptedForms(item.answers),
+      promptForms: acceptedForms([item.word]),
+    };
+  }
   const pair = pickPair(learningLanguage);
   const accepted = [...new Set(pair.synonyms.map(normalizeAnswer).filter(word => word.length >= 2))];
   return {
@@ -90,9 +103,18 @@ const buildChallenge = (learningLanguage = 'English') => {
 const serializeChallenge = challenge => ({
   id: challenge.id,
   prompt: challenge.prompt,
+  promptRoman: challenge.promptRoman || '',
 });
 
 const isCorrectAnswer = (challenge, answer) => {
+  if (challenge.ai) {
+    // Any script: native text or its romanized reading both count.
+    const normalized = normalizeAnyAnswer(answer);
+    if (!normalized || challenge.promptForms.includes(normalized)) {
+      return false;
+    }
+    return challenge.accepted.includes(normalized);
+  }
   const normalized = normalizeAnswer(answer);
   if (!normalized || normalized.length < 2) {
     return false;
@@ -104,7 +126,7 @@ const isCorrectAnswer = (challenge, answer) => {
 };
 
 const pickBotAnswer = challenge => {
-  const pool = challenge.accepted.filter(word => word.length >= 2);
+  const pool = challenge.accepted.filter(word => word.length >= (challenge.ai ? 1 : 2));
   if (pool.length === 0) {
     return 'WORD';
   }

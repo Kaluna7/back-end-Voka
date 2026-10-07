@@ -1,3 +1,5 @@
+const { normalizeAnyAnswer, acceptedForms } = require('../services/aiGamePuzzleService');
+const pickAi = items => items[Math.floor(Math.random() * items.length)];
 const { randomBotName } = require('./sudowordPuzzles');
 
 const SENTENCE_BANK = [
@@ -370,7 +372,21 @@ const tokenizeSentence = sentence => {
 
 const pickSentence = () => SENTENCE_BANK[Math.floor(Math.random() * SENTENCE_BANK.length)];
 
-const buildChallenge = () => {
+const buildChallenge = (_learningLanguage = 'English', aiItems = null) => {
+  if (Array.isArray(aiItems) && aiItems.length) {
+    const item = pickAi(aiItems);
+    const tokens = item.words.map((piece, index) => ({
+      id: `w${index}_${Math.random().toString(36).slice(2, 6)}`,
+      word: piece.text,
+      roman: piece.roman || '',
+    }));
+    return {
+      id: `sb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ai: true,
+      tokens: shuffleTokensKeepWordsIntact(tokens),
+      correct: normalizeAnyAnswer(item.words.map(piece => piece.text).join('')),
+    };
+  }
   const sentence = pickSentence();
   const tokens = shuffleTokensKeepWordsIntact(tokenizeSentence(sentence));
   return {
@@ -382,10 +398,14 @@ const buildChallenge = () => {
 
 const serializeChallenge = challenge => ({
   id: challenge.id,
-  tokens: challenge.tokens.map(({ id, word }) => ({ id, word })),
+  tokens: challenge.tokens.map(({ id, word, roman }) => (roman ? { id, word, roman } : { id, word })),
 });
 
 const isCorrectAnswer = (challenge, answer) => {
+  if (challenge.ai) {
+    // Spaces don't matter (languages like Japanese join pieces without them).
+    return normalizeAnyAnswer(answer) === challenge.correct;
+  }
   const normalized = normalizeAnswer(answer);
   if (!normalized || normalized.length < 3) {
     return false;

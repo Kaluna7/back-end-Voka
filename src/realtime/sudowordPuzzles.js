@@ -1,3 +1,5 @@
+const { normalizeAnyAnswer, acceptedForms } = require('../services/aiGamePuzzleService');
+const pickAi = items => items[Math.floor(Math.random() * items.length)];
 const WORD_BANK = [
   'APPLE',
   'HOUSE',
@@ -300,7 +302,19 @@ const pickWord = (bank = WORD_BANK) => {
   return safe[Math.floor(Math.random() * safe.length)] || 'MANGO';
 };
 
-const buildChallenge = (learningLanguage = 'English') => {
+const buildChallenge = (learningLanguage = 'English', aiItems = null) => {
+  if (Array.isArray(aiItems) && aiItems.length) {
+    const item = pickAi(aiItems);
+    const blank = Math.floor(Math.random() * item.word.length);
+    return {
+      id: `ch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      word: item.word,
+      native: item.native || '',
+      letters: item.word.split('').map((letter, index) => (index === blank ? null : letter)),
+      blankIndex: blank,
+      answer: item.word[blank],
+    };
+  }
   const localizedBank = getSudowordWordBank(learningLanguage);
   const bank = sanitizeWordBank(
     localizedBank && localizedBank.length > 0 ? localizedBank : WORD_BANK,
@@ -319,6 +333,7 @@ const buildChallenge = (learningLanguage = 'English') => {
 };
 
 const serializeChallenge = challenge => ({
+  native: challenge.native || '',
   id: challenge.id,
   letters: challenge.letters,
   blankIndex: challenge.blankIndex,
