@@ -3,7 +3,7 @@ const { avatarForName } = require('../config/presetAvatars');
 
 /** Biggest XP a single match can report — guards the board against bogus payloads. */
 const MAX_XP_PER_MATCH = 500;
-const LEADERBOARD_SIZE = 50;
+const LEADERBOARD_SIZE = 100;
 
 /** ISO-8601 week in UTC, e.g. "2026-W40". Weeks start on Monday. */
 const getWeekKey = (date = new Date()) => {
@@ -53,13 +53,37 @@ const addGameXp = async (userId, rawXp) => {
  * (deterministic per week) and real players simply rank in between / above them.
  * Set GAME_LEADERBOARD_DUMMIES=false to turn them off once there are enough real users.
  */
-const DUMMY_NAMES = [
-  'Alya Putri', 'Rizky Pratama', 'Sakura Tanaka', 'Daniel Kim', 'Nadia Rahma', 'Lucas Silva',
-  'Fajar Nugroho', 'Mei Lin', 'Kevin Wijaya', 'Sofia Rossi', 'Bima Saputra', 'Hana Yoshida',
-  'Dewi Lestari', 'Omar Haddad', 'Citra Ayu', 'Minjun Park', 'Raka Aditya', 'Emma Müller',
-  'Intan Permata', 'Arjun Mehta', 'Salsa Nabila', 'Yuki Sato', 'Dimas Anggara', 'Clara Dupont',
-  'Putri Maharani', 'Leo Santos', 'Gilang Ramadhan', 'Aisha Rahman', 'Tasya Amelia', 'Hugo Martin',
+const FIRST_NAMES = [
+  'Alya', 'Rizky', 'Sakura', 'Daniel', 'Nadia', 'Lucas', 'Fajar', 'Mei', 'Kevin', 'Sofia', 'Bima', 'Hana',
+  'Dewi', 'Omar', 'Citra', 'Minjun', 'Raka', 'Emma', 'Intan', 'Arjun', 'Salsa', 'Yuki', 'Dimas', 'Clara',
+  'Putri', 'Leo', 'Gilang', 'Aisha', 'Tasya', 'Hugo', 'Kenji', 'Jisoo', 'Mateo', 'Layla', 'Reza', 'Ayu',
+  'Farhan', 'Nina', 'Taro', 'Lina', 'Andre', 'Maya', 'Bayu', 'Elena', 'Haruto', 'Zahra', 'Rafi', 'Chloe',
 ];
+const LAST_NAMES = [
+  'Putri', 'Pratama', 'Tanaka', 'Kim', 'Rahma', 'Silva', 'Nugroho', 'Lin', 'Wijaya', 'Rossi', 'Saputra',
+  'Yoshida', 'Lestari', 'Haddad', 'Park', 'Aditya', 'Muller', 'Permata', 'Mehta', 'Sato', 'Anggara',
+  'Dupont', 'Santos', 'Ramadhan', 'Rahman', 'Martin', 'Watanabe', 'Lee', 'Garcia', 'Hakim', 'Kurniawan',
+];
+const HANDLE_STYLES = [
+  first => `${first.toLowerCase()}.learns`,
+  first => `${first}Study`,
+  first => `${first.toLowerCase()}_${String(first.length * 7).padStart(2, '0')}`,
+  first => `its${first}`,
+  first => `${first}Speaks`,
+];
+
+/** ~130 stable, natural-looking names: full names plus some gamer-style handles. */
+const DUMMY_NAMES = (() => {
+  const names = new Set();
+  FIRST_NAMES.forEach((first, i) => {
+    names.add(`${first} ${LAST_NAMES[i % LAST_NAMES.length]}`);
+    names.add(`${first} ${LAST_NAMES[(i * 7 + 3) % LAST_NAMES.length]}`);
+    if (i % 2 === 0) {
+      names.add(HANDLE_STYLES[i % HANDLE_STYLES.length](first));
+    }
+  });
+  return [...names].slice(0, 130);
+})();
 
 const useDummies = () => String(process.env.GAME_LEADERBOARD_DUMMIES ?? 'true').toLowerCase() !== 'false';
 
@@ -78,18 +102,40 @@ const seeded = seed => {
 
 const WEEK_MS = 7 * 86400000;
 
+const DAY_MS = 86400000;
+
+/**
+ * Seeded players that look active: each one has a weekly XP target (a long tail from ~3,000
+ * at the top to ~100 around #100, reshuffled every week) and a daily rhythm (most days they
+ * play, some days they rest). XP only ever goes up as the week goes on.
+ */
 const getDummyPlayers = (weekKey, now = new Date()) => {
-  // 0 → Monday 00:00 UTC, 1 → end of the week.
-  const progress = Math.min(1, Math.max(0, 1 - getMsUntilReset(now) / WEEK_MS));
-  return DUMMY_NAMES.map((name, index) => {
-    const id = `seed-${index + 1}`;
-    const pace = 80 + seeded(`${weekKey}:${id}:pace`) * 1400; // weekly XP target
-    const head = seeded(`${weekKey}:${id}:head`) * 60; // some players start early
-    // Bumpy growth so the order shuffles a little during the week.
-    const wobble = 0.85 + seeded(`${weekKey}:${id}:${Math.floor(progress * 28)}`) * 0.3;
-    const xp = Math.floor(head + pace * progress * wobble);
-    return { id, name, avatarUrl: avatarForName(name), xp, isSeed: true };
-  }).filter(player => player.xp > 0);
+  // Days elapsed since Monday 00:00 UTC (0..7).
+  const elapsedDays = Math.min(7, Math.max(0, 7 - getMsUntilReset(now) / DAY_MS));
+  const fullDays = Math.floor(elapsedDays);
+  const todayFraction = elapsedDays - fullDays;
+  const order = DUMMY_NAMES.map((name, index) => ({ name, index, key: seeded(`${weekKey}:order:${name}`) }))
+    .sort((a, b) => a.key - b.key);
+
+  return order
+    .map(({ name, index }, position) => {
+      const id = `seed-${index + 1}`;
+      const target = 3000 * Math.pow(0.965, position) * (0.85 + seeded(`${weekKey}:${id}:t`) * 0.3);
+      // Daily shares: ~25% rest days (0), otherwise a random amount of play.
+      const shares = Array.from({ length: 7 }, (_, day) => {
+        const roll = seeded(`${weekKey}:${id}:d${day}`);
+        return roll < 0.25 ? 0 : 0.3 + roll;
+      });
+      const total = shares.reduce((sum, share) => sum + share, 0) || 1;
+      const played =
+        shares.slice(0, fullDays).reduce((sum, share) => sum + share, 0) +
+        (shares[fullDays] || 0) * todayFraction;
+      const xp = Math.floor((target * played) / total);
+      // About two thirds have an avatar; the rest show initials like real users.
+      const avatarUrl = seeded(`avatar:${name}`) < 0.65 ? avatarForName(name) : '';
+      return { id, name, avatarUrl, xp, isSeed: true };
+    })
+    .filter(player => player.xp > 0);
 };
 
 const toRow = (user, rank) => ({
