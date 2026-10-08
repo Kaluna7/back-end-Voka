@@ -31,6 +31,28 @@ const needsRoman = language => Boolean(ROMANIZATION[language]);
 /** Story Rush counts spoken words split by spaces; scripts without spaces don't fit. */
 const NO_WORD_SPACES = new Set(['Japanese', 'Chinese', 'Thai']);
 
+/**
+ * Beginner-friendly writing per language, added to every prompt. Learners are beginners,
+ * so the native script must be easy to read (no rare kanji/hanzi).
+ */
+const BEGINNER_SCRIPT_RULES = {
+  Japanese:
+    'Learners are beginners (JLPT N5). Write the native text the way beginners learn it: mostly hiragana and katakana, ' +
+    'using only the simplest N5 kanji (like 日, 月, 火, 水, 木, 金, 土, 山, 川, 大, 小, 人, 口, 目, 手, 上, 下, 中, 学, 生, 先, 本). ' +
+    'If a word normally uses harder kanji, write it in hiragana instead. Prefer common everyday words.',
+  Chinese:
+    'Learners are beginners (HSK 1-2). Use only simplified characters from HSK 1-2 vocabulary and very common everyday words.',
+  Korean: 'Learners are beginners (TOPIK I). Use only common everyday Hangul words beginners learn first.',
+  Arabic: 'Learners are beginners. Use only common everyday Modern Standard Arabic words.',
+  Hindi: 'Learners are beginners. Use only common everyday Hindi words in Devanagari.',
+  Russian: 'Learners are beginners. Use only common everyday Russian words.',
+  Thai: 'Learners are beginners. Use only common everyday Thai words.',
+};
+
+const beginnerRules = language =>
+  BEGINNER_SCRIPT_RULES[language] ||
+  `Learners are beginners (A1-A2). Use only common everyday ${language} words.`;
+
 const MIN_ITEMS = 12;
 const GENERATE_TIMEOUT_MS = 60000;
 
@@ -89,24 +111,26 @@ JSON: {"items": [{"word": "ABCDE"${needsRoman(language) ? ', "native": "<native 
   synoword: {
     batch: 24,
     prompt: language => `Create 24 ${language} vocabulary items for a synonym game.
-Each item: a common ${language} word and 3 to 5 single-word ${language} synonyms (all real ${language}, never English).
+Each item: a common ${language} word and 1 to 4 single-word ${language} synonyms (all real ${language}, never English).
 Each text uses this format: ${pairFormat(language)}
 JSON: {"items": [{"word": <text>, "answers": [<text>, ...]}]}`,
     validate: (item, language) => {
       const word = textPair(item?.word, language, 40);
-      const answers = pairList(item?.answers, language, 2, 40);
+      // Beginner words often have just one common synonym/opposite, so one is enough.
+      const answers = pairList(item?.answers, language, 1, 40);
       return word && answers ? { word, answers } : null;
     },
   },
   antoword: {
     batch: 24,
     prompt: language => `Create 24 ${language} vocabulary items for an antonym (opposite) game.
-Each item: a common ${language} word and 2 to 5 single-word ${language} antonyms (all real ${language}, never English).
+Each item: a common ${language} word and 1 to 4 single-word ${language} antonyms (all real ${language}, never English).
 Each text uses this format: ${pairFormat(language)}
 JSON: {"items": [{"word": <text>, "answers": [<text>, ...]}]}`,
     validate: (item, language) => {
       const word = textPair(item?.word, language, 40);
-      const answers = pairList(item?.answers, language, 2, 40);
+      // Beginner words often have just one common synonym/opposite, so one is enough.
+      const answers = pairList(item?.answers, language, 1, 40);
       return word && answers ? { word, answers } : null;
     },
   },
@@ -203,7 +227,7 @@ const callDeepseekJson = async prompt => {
       {
         role: 'system',
         content:
-          'You write accurate, natural language-learning game content for learners (A2 to B1 level). ' +
+          'You write accurate, natural language-learning game content for beginner learners (A1 to A2 level). ' +
           'Every word must be real and correctly spelled. Never repeat an item. Reply with JSON only.',
       },
       { role: 'user', content: prompt },
@@ -236,7 +260,9 @@ const itemSignature = item => JSON.stringify(item).toLowerCase();
 
 const generateItems = async (gameKey, language) => {
   const spec = SPECS[gameKey];
-  const json = await callDeepseekJson(spec.prompt(language));
+  const json = await callDeepseekJson(`${spec.prompt(language)}
+
+${beginnerRules(language)}`);
   const raw = Array.isArray(json?.items) ? json.items : [];
   const seen = new Set();
   return raw
