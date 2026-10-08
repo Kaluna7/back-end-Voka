@@ -71,6 +71,16 @@ const sanitizeProfileAvatarForStorage = async (avatarInput, { existingAvatarUrl 
     return existing;
   }
 
+  // Built-in avatar picked from the in-app gallery (served from public/avatars).
+  const preset = /^\/static\/avatars\/([a-z0-9-]{1,60})\.webp$/.exec(trimmed);
+  if (preset) {
+    const file = require('path').join(__dirname, '../../public/avatars', `${preset[1]}.webp`);
+    if (require('fs').existsSync(file)) {
+      return trimmed;
+    }
+    throw new Error('Unknown preset avatar.');
+  }
+
   return assertSafeExternalAvatarUrl(trimmed);
 };
 
