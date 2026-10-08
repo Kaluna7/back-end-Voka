@@ -3,6 +3,7 @@ const {
   getGamePuzzlesWithin,
   prewarmGamePuzzles,
   usesAiPuzzles,
+  normalizeAnyAnswer,
 } = require('../services/aiGamePuzzleService');
 const GAME_KEY = 'wordDetective';
 /** Longest a match waits for AI questions before falling back to the built-in ones. */
@@ -265,11 +266,12 @@ const registerWordDetectiveSocket = server => {
     if (!challenge) {
       return null;
     }
-    const normalized = normalizeAnswer(answer);
-    if (!normalized || normalized.length < 2) {
+    // AI questions can be in any script (ほし, 별, 星): the A-Z-only cleanup would erase them.
+    const normalized = challenge.ai ? normalizeAnyAnswer(answer) : normalizeAnswer(answer);
+    if (!normalized || normalized.length < (challenge.ai ? 1 : 2)) {
       return null;
     }
-    const correct = isCorrectAnswer(challenge, normalized);
+    const correct = isCorrectAnswer(challenge, challenge.ai ? answer : normalized);
     if (correct) {
       player.score += POINTS_CORRECT;
       player.solvedCount += 1;
