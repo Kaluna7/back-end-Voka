@@ -7,7 +7,12 @@ const {
 const GAME_KEY = 'wordDetective';
 /** Longest a match waits for AI questions before falling back to the built-in ones. */
 const PUZZLE_WAIT_MS = 25000;
-const { parseJoinLearningLanguage, resolveRoomLearningLanguage } = require('./gameRealtimeHelpers');
+const {
+  parseJoinLearningLanguage,
+  resolveRoomLearningLanguage,
+  drawFromDeck,
+  pickFreshChallenge,
+} = require('./gameRealtimeHelpers');
 const {
   MATCH_DURATION_MS,
   POINTS_CORRECT,
@@ -248,8 +253,10 @@ const registerWordDetectiveSocket = server => {
     rooms.delete(room.id);
   };
 
-  const assignChallenge = player => {
-    player.challenge = buildChallenge(room.learningLanguage, room.aiItems);
+  const assignChallenge = (player, room) => {
+    player.challenge = pickFreshChallenge(player, () =>
+      buildChallenge(room.learningLanguage, room.aiItems ? drawFromDeck(player, room.aiItems) : null),
+    );
     return player.challenge;
   };
 
@@ -276,7 +283,7 @@ const registerWordDetectiveSocket = server => {
       score: player.score,
       solvedCount: player.solvedCount,
     };
-    assignChallenge(player);
+    assignChallenge(player, room);
     result.nextChallenge = serializeChallenge(player.challenge);
     return result;
   };
@@ -293,7 +300,7 @@ const registerWordDetectiveSocket = server => {
   const sendMatchStart = (room, targetSocket, playerId) => {
     const self = room.players.find(p => p.id === playerId);
     if (self && !self.challenge) {
-      assignChallenge(self);
+      assignChallenge(self, room);
     }
     sendJson(targetSocket, {
       type: 'match_start',
@@ -326,7 +333,7 @@ const registerWordDetectiveSocket = server => {
     }
     room.started = true;
     room.endsAt = Date.now() + MATCH_DURATION_MS;
-    room.players.forEach(player => assignChallenge(player));
+    room.players.forEach(player => assignChallenge(player, room));
     room.matchTimer = setTimeout(() => endMatch(room), MATCH_DURATION_MS);
     startBotLoop(room);
     room.players.forEach(player => {

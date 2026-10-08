@@ -54,6 +54,10 @@ const beginnerRules = language =>
   `Learners are beginners (A1-A2). Use only common everyday ${language} words.`;
 
 const MIN_ITEMS = 12;
+/** Sets grow in the background up to this size so long matches don't run out. */
+const TARGET_ITEMS = 72;
+const TOP_UP_COOLDOWN_MS = 10 * 60 * 1000;
+const lastTopUp = new Map();
 const GENERATE_TIMEOUT_MS = 60000;
 
 const str = (value, max = 160) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
@@ -299,6 +303,9 @@ const getGamePuzzles = async (gameKey, learningLanguage) => {
   const key = cacheKey(gameKey, language);
   const cached = memoryCache.get(key);
   if (cached && cached.length >= MIN_ITEMS) {
+    if (cached.length < TARGET_ITEMS) {
+      topUpInBackground(gameKey, language, key);
+    }
     return cached;
   }
   if (inflight.has(key)) {
@@ -334,6 +341,29 @@ const getGamePuzzles = async (gameKey, learningLanguage) => {
   inflight.set(key, task);
   return task;
 };
+
+/** Adds another AI batch (deduplicated) to a small set, at most every few minutes. */
+function topUpInBackground(gameKey, language, key) {
+  const now = Date.now();
+  if (inflight.has(key) || now - (lastTopUp.get(key) || 0) < TOP_UP_COOLDOWN_MS) {
+    return;
+  }
+  lastTopUp.set(key, now);
+  generateItems(gameKey, language)
+    .then(async fresh => {
+      const current = memoryCache.get(key) || [];
+      const seen = new Set(current.map(itemSignature));
+      const additions = fresh.filter(item => !seen.has(itemSignature(item)));
+      if (!additions.length) {
+        return;
+      }
+      const merged = [...current, ...additions].slice(0, TARGET_ITEMS);
+      memoryCache.set(key, merged);
+      await GamePuzzleSet.updateOne({ gameKey, language }, { $set: { items: merged } }, { upsert: true });
+      console.log(`[ai-puzzles] ${gameKey}/${language}: grew to ${merged.length} items`);
+    })
+    .catch(() => null);
+}
 
 /** Start preparing questions early (e.g. as soon as a player starts searching). */
 const prewarmGamePuzzles = (gameKey, learningLanguage) => {

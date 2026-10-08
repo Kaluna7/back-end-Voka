@@ -22,6 +22,8 @@ const {
 const {
   parseJoinLearningLanguage,
   resolveRoomLearningLanguage,
+  drawFromDeck,
+  pickFreshChallenge,
 } = require('./gameRealtimeHelpers');
 
 const WS_PATH = '/ws/antoword';
@@ -252,7 +254,9 @@ const registerAntowordSocket = server => {
   };
 
   const assignChallenge = (player, room) => {
-    player.challenge = buildChallenge(room.learningLanguage, room.aiItems);
+    player.challenge = pickFreshChallenge(player, () =>
+      buildChallenge(room.learningLanguage, room.aiItems ? drawFromDeck(player, room.aiItems) : null),
+    );
     return player.challenge;
   };
 

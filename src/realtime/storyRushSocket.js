@@ -21,6 +21,8 @@ const {
 const {
   parseJoinLearningLanguage,
   resolveRoomLearningLanguage,
+  drawFromDeck,
+  pickFreshChallenge,
 } = require('./gameRealtimeHelpers');
 
 const WS_PATH = '/ws/story-rush';
@@ -356,7 +358,9 @@ const registerStoryRushSocket = server => {
       return;
     }
     room.started = true;
-    room.story = buildChallenge(room.learningLanguage, room.aiItems);
+    room.story = pickFreshChallenge(room, () =>
+      buildChallenge(room.learningLanguage, room.aiItems ? drawFromDeck(room, room.aiItems) : null),
+    );
     room.roundStartedAt = Date.now();
     room.roundEndsAt = room.story.roundEndsAt;
     room.finishCount = 0;
