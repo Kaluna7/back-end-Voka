@@ -1,4 +1,5 @@
 const { WebSocketServer } = require('ws');
+const { avatarForName } = require('../config/presetAvatars');
 const {
   getGamePuzzlesWithin,
   prewarmGamePuzzles,
@@ -132,6 +133,7 @@ const registerSudowordSocket = server => {
       roster.push({
         id: fillSlots[i].id,
         name: fillSlots[i].name,
+        avatarUrl: avatarForName(fillSlots[i].name),
         isYou: false,
       });
     }
@@ -190,6 +192,7 @@ const registerSudowordSocket = server => {
     room.players.map(player => ({
       id: player.id,
       name: player.name,
+      avatarUrl: player.isBot ? avatarForName(player.name) : '',
       isYou: player.id === viewerId,
     }));
 

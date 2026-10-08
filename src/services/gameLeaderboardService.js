@@ -1,4 +1,5 @@
 const { User } = require('../models/User');
+const { avatarForName } = require('../config/presetAvatars');
 
 /** Biggest XP a single match can report — guards the board against bogus payloads. */
 const MAX_XP_PER_MATCH = 500;
@@ -87,7 +88,7 @@ const getDummyPlayers = (weekKey, now = new Date()) => {
     // Bumpy growth so the order shuffles a little during the week.
     const wobble = 0.85 + seeded(`${weekKey}:${id}:${Math.floor(progress * 28)}`) * 0.3;
     const xp = Math.floor(head + pace * progress * wobble);
-    return { id, name, avatarUrl: '', xp, isSeed: true };
+    return { id, name, avatarUrl: avatarForName(name), xp, isSeed: true };
   }).filter(player => player.xp > 0);
 };
 
