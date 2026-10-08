@@ -651,7 +651,27 @@ const registerSynowordSocket = server => {
             const player = room.players.find(p => p.id === meta.playerId);
             if (player) {
               player.score = Math.max(0, player.score - 20);
-              pushLeaderboard(room);
+              const leaderboard = pushLeaderboard(room);
+              // The player who leaves gets their own game-over result (the match goes on
+              // for everyone else), so the app can show the summary instead of just exiting.
+              if (room.started && player.socket === socket) {
+                // Leaving ranks you below everyone you're tied with, and never earns the win bonus.
+                const rank =
+                  leaderboard.filter(row => row.id !== player.id && row.score >= player.score).length + 1;
+                sendJson(socket, {
+                  type: 'match_ended',
+                  forfeited: true,
+                  leaderboard,
+                  winnerId: leaderboard[0]?.id || null,
+                  winnerName: leaderboard[0]?.name || null,
+                  yourScore: player.score,
+                  yourRank: rank || leaderboard.length,
+                  yourExp: calcSynowordExp(player.score, Math.max(rank, 3)),
+                  solvedCount: player.solvedCount,
+                });
+                player.socket = null;
+                socketMeta.set(socket, { ...socketMeta.get(socket), roomId: null });
+              }
             }
           }
         }
