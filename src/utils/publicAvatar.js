@@ -30,7 +30,7 @@ const servePublicAvatar = async (req, res) => {
   if (!/^[a-f0-9]{24}$/i.test(userId)) {
     return res.status(404).end();
   }
-  const User = require('../models/User');
+  const { User } = require('../models/User');
   const user = await User.findById(userId).select('avatarUrl').lean().catch(() => null);
   const match = DATA_URL.exec(String(user?.avatarUrl || ''));
   if (!match) {
