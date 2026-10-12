@@ -1454,9 +1454,9 @@ class DeepgramVoiceAgentSession {
       return '嗯，这样啊！再跟我聊聊吧？';
     }
     if (code === 'id') {
-      return 'Hmm, oke! Cerita lagi dong?';
+      return 'Oke, saya mengerti. Boleh ceritakan sedikit lagi?';
     }
-    return "Yeah, I hear you! Tell me a bit more?";
+    return 'I see. Could you tell me a little more?';
   }
 
   clearTtsWatchdog() {

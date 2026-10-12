@@ -11,6 +11,7 @@ const {
   sanitizeTeacherChatText,
 } = require('../services/deepseekService');
 const { isTeacherCompanionId } = require('../constants/teacherPrompts');
+const { createSpokenFillerFilter, stripSpokenFillers } = require('../utils/spokenFillers');
 const { getVoiceAgentSession, updateVoiceAgentSession } = require('../services/voiceAgentSessionRegistry');
 
 const THINK_SECRET = () => String(getEnv('VOICE_AGENT_THINK_SECRET', '') || '').trim();
@@ -222,7 +223,7 @@ const voiceAgentChatCompletions = async (req, res) => {
     clearTimeout(timeout);
     let reply = clampVoiceReplyLength(full.trim());
     if (isTeacherCompanionId(session.companionId)) {
-      reply = sanitizeTeacherChatText(reply);
+      reply = stripSpokenFillers(sanitizeTeacherChatText(reply)).trim();
     }
     return res.json({
       id: completionId,
@@ -254,6 +255,20 @@ const voiceAgentChatCompletions = async (req, res) => {
   let fullContent = '';
   let firstTokenAt = 0;
   let reasoningChunks = 0;
+  // Teachers: never let laughs/fillers reach TTS ("haha" is spoken as "huh huh").
+  const spokenFilter = isTeacherCompanionId(session.companionId) ? createSpokenFillerFilter() : null;
+  const writeContent = content => {
+    if (!content) {
+      return;
+    }
+    writeSseChunk(res, {
+      id: completionId,
+      object: 'chat.completion.chunk',
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    });
+  };
 
   const pumpLine = line => {
     const trimmed = line.trim();
@@ -305,13 +320,7 @@ const voiceAgentChatCompletions = async (req, res) => {
         session.onTokenDelta({ sessionId, text: fullContent, delta });
       } catch {}
     }
-    writeSseChunk(res, {
-      id: completionId,
-      object: 'chat.completion.chunk',
-      created: Math.floor(Date.now() / 1000),
-      model,
-      choices: [{ index: 0, delta: { content: delta }, finish_reason: null }],
-    });
+    writeContent(spokenFilter ? spokenFilter.push(delta) : delta);
     return shouldStopVoiceAgentStream(fullContent);
   };
 
@@ -338,6 +347,9 @@ const voiceAgentChatCompletions = async (req, res) => {
     if (!stopEarly && carry.trim()) {
       pumpLine(carry);
     }
+    if (spokenFilter && !res.writableEnded) {
+      writeContent(spokenFilter.flush());
+    }
   } catch (error) {
     if (!stopEarly) {
       console.warn('[voice-agent-llm] stream aborted', {
@@ -358,7 +370,7 @@ const voiceAgentChatCompletions = async (req, res) => {
 
   let reply = clampVoiceReplyLength(String(fullContent || '').trim());
   if (isTeacherCompanionId(session.companionId)) {
-    reply = sanitizeTeacherChatText(reply);
+    reply = stripSpokenFillers(sanitizeTeacherChatText(reply)).trim();
   }
   if (stopEarly) {
     console.log('[voice-agent-llm] early stop for short voice reply', {
