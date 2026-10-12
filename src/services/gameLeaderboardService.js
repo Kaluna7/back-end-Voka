@@ -1,3 +1,4 @@
+const { publicAvatarUrl } = require('../utils/publicAvatar');
 const { User } = require('../models/User');
 const { avatarForName } = require('../config/presetAvatars');
 
@@ -141,7 +142,7 @@ const getDummyPlayers = (weekKey, now = new Date()) => {
 const toRow = (user, rank) => ({
   id: String(user._id),
   name: user.name || 'Player',
-  avatarUrl: user.avatarUrl || '',
+  avatarUrl: publicAvatarUrl(user),
   xp: Number(user.gameStats?.weeklyXp || 0),
   rank,
 });
@@ -171,7 +172,7 @@ const getWeeklyLeaderboard = async userId => {
     you = {
       id: String(me._id),
       name: me.name || 'Player',
-      avatarUrl: me.avatarUrl || '',
+      avatarUrl: publicAvatarUrl(me),
       xp: myXp,
       rank: ahead == null ? null : ahead + 1,
     };

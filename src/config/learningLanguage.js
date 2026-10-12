@@ -102,7 +102,8 @@ const resolveGoogleTtsVoice = (learningLanguage, voiceVariant = 'default') => {
     return useMale ? 'hi-IN-Wavenet-C' : 'hi-IN-Wavenet-A';
   }
   if (lang === 'Indonesian') {
-    return useMale ? 'id-ID-Wavenet-B' : 'id-ID-Wavenet-A';
+    // Chirp 3 HD: far more natural, clearer Indonesian pronunciation than Wavenet.
+    return useMale ? 'id-ID-Chirp3-HD-Charon' : 'id-ID-Chirp3-HD-Kore';
   }
   if (lang === 'Portuguese') {
     return useMale ? 'pt-BR-Neural2-B' : 'pt-BR-Neural2-A';

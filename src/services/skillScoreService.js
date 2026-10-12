@@ -29,10 +29,28 @@ const GAME_SKILL_MAP = Object.fromEntries(
   Object.entries(GAME_ACTIVITY_MAP).map(([key, pairs]) => [key, pairs.map(([skill]) => skill)]),
 );
 
-const EMA_ALPHA = 0.18;
 const ACTIVITY_EMA_ALPHA = 0.3;
 
+/**
+ * Skill scores are meant to be earned slowly: each activity nudges a score toward how
+ * well that session went, by at most MAX_GAIN_PER_EVENT points, and less the higher the
+ * score already is. Chat messages weigh much less than a game or a call.
+ */
+const GAIN_RATE = 0.06;
+const MAX_GAIN_PER_EVENT = 1.2;
+const LOSS_RATE = 0.02;
+const MAX_LOSS_PER_EVENT = 0.6;
+const CHAT_EVENT_WEIGHT = 0.3;
+
+/** No learning for 5 days or more: every skill loses 2% per idle day from day 5 on. */
+const DECAY_START_DAYS = 5;
+const DECAY_PER_DAY = 0.02;
+const DECAY_FLOOR = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const clampScore = value => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+/** Stored skill scores keep one decimal so small gains add up instead of rounding away. */
+const clampSkillScore = value => Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 10) / 10));
 
 const defaultSkillScores = () => ({
   listening: 15,
@@ -79,14 +97,51 @@ const sessionScoreFromAccuracy = (accuracy, correct, total) =>
 const mergeScore = (current, sessionScore, alpha) =>
   clampScore(clampScore(current) * (1 - alpha) + clampScore(sessionScore) * alpha);
 
+const progressSkillScore = (current, sessionScore, weight = 1) => {
+  const now = clampSkillScore(current);
+  const target = clampScore(sessionScore);
+  if (target > now) {
+    const gain = Math.min(MAX_GAIN_PER_EVENT, (target - now) * GAIN_RATE * (1 - now / 100));
+    return clampSkillScore(now + gain * weight);
+  }
+  const loss = Math.min(MAX_LOSS_PER_EVENT, (now - target) * LOSS_RATE);
+  return clampSkillScore(now - loss * weight);
+};
+
+const idleDecayFactor = (lastActiveAt, nowMs = Date.now()) => {
+  const last = lastActiveAt ? new Date(lastActiveAt).getTime() : NaN;
+  if (!Number.isFinite(last)) {
+    return 1;
+  }
+  const idleDays = Math.floor((nowMs - last) / DAY_MS);
+  if (idleDays < DECAY_START_DAYS) {
+    return 1;
+  }
+  return Math.pow(1 - DECAY_PER_DAY, idleDays - DECAY_START_DAYS + 1);
+};
+
+/** Scores as they stand today, after any inactivity decay (computed, never stacked). */
+const applyIdleDecay = (scores, lastActiveAt) => {
+  const factor = idleDecayFactor(lastActiveAt);
+  if (factor >= 1) {
+    return scores;
+  }
+  const decayed = {};
+  SKILL_KEYS.forEach(skill => {
+    const value = clampSkillScore(scores[skill]);
+    decayed[skill] = value <= DECAY_FLOOR ? value : clampSkillScore(Math.max(DECAY_FLOOR, value * factor));
+  });
+  return decayed;
+};
+
 const resolveLanguage = (user, language) =>
   language ? normalizeLearningLanguage(language) : resolveLearningLanguage(user);
 
 const sanitizeScores = (raw, fallback) => ({
-  listening: clampScore(raw?.listening ?? fallback.listening),
-  speaking: clampScore(raw?.speaking ?? fallback.speaking),
-  vocabulary: clampScore(raw?.vocabulary ?? fallback.vocabulary),
-  grammar: clampScore(raw?.grammar ?? fallback.grammar),
+  listening: clampSkillScore(raw?.listening ?? fallback.listening),
+  speaking: clampSkillScore(raw?.speaking ?? fallback.speaking),
+  vocabulary: clampSkillScore(raw?.vocabulary ?? fallback.vocabulary),
+  grammar: clampSkillScore(raw?.grammar ?? fallback.grammar),
 });
 
 const sanitizeActivities = raw => {
@@ -125,10 +180,12 @@ const initialScoresForLanguage = (user, language) => {
 const readLanguageEntry = (user, language) => {
   const entry = user?.dashboard?.skillProgress?.[language];
   const fallbackScores = initialScoresForLanguage(user, language);
+  const lastActiveAt = entry?.lastActiveAt || null;
   return {
-    scores: sanitizeScores(entry?.scores, fallbackScores),
+    scores: applyIdleDecay(sanitizeScores(entry?.scores, fallbackScores), lastActiveAt),
     activities: sanitizeActivities(entry?.activities),
     counts: sanitizeCounts(entry?.counts),
+    lastActiveAt,
   };
 };
 
@@ -164,12 +221,14 @@ const applySkillUpdates = (user, updates, language) => {
     user.dashboard.skillProgress && typeof user.dashboard.skillProgress === 'object'
       ? user.dashboard.skillProgress
       : {};
+  // Any decay from a long break is locked in first, then this activity builds on it.
   const entry = readLanguageEntry(user, lang);
+  const weight = Number.isFinite(Number(updates.weight)) ? Math.max(0, Math.min(1, Number(updates.weight))) : 1;
 
   SKILL_KEYS.forEach(skill => {
     const session = updates.scores?.[skill];
     if (session != null) {
-      entry.scores[skill] = mergeScore(entry.scores[skill], session, EMA_ALPHA);
+      entry.scores[skill] = progressSkillScore(entry.scores[skill], session, weight);
     }
     const activityUpdates = updates.activities?.[skill] || {};
     Object.entries(activityUpdates).forEach(([id, value]) => {
@@ -187,6 +246,9 @@ const applySkillUpdates = (user, updates, language) => {
     }
   });
 
+  if (hasUpdates(updates)) {
+    entry.lastActiveAt = new Date();
+  }
   user.dashboard.skillProgress = { ...progress, [lang]: entry };
   user.markModified('dashboard.skillProgress');
   if (lang === resolveLearningLanguage(user)) {
@@ -277,6 +339,7 @@ const evaluateChatMessage = (message, language) => {
   };
   return {
     scores,
+    weight: CHAT_EVENT_WEIGHT,
     activities: {
       listening: { chat: scores.listening },
       speaking: { chat: scores.speaking },

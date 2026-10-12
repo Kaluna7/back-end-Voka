@@ -59,7 +59,9 @@ const synthesizeSpeechWithGoogle = async ({
   const voiceName =
     voiceVariant === 'masculine' || voiceVariant === 'feminine'
       ? resolveGoogleTtsVoice(lang, voiceVariant)
-      : model || resolveGoogleTtsVoice(lang, voiceVariant);
+      : // Older app builds still ask for the Indonesian Wavenet voices: upgrade them to Chirp 3 HD.
+        (model && !/^id-ID-(Wavenet|Standard)-/.test(model) ? model : '') ||
+        resolveGoogleTtsVoice(lang, voiceVariant);
   const languageCode = resolveGoogleTtsLanguageCode(lang);
   const ttsClient = getGoogleTtsClient();
 

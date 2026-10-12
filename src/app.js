@@ -9,6 +9,7 @@ const billingRoutes = require('./routes/billingRoutes');
 const characterRoutes = require('./routes/characterRoutes');
 const companionRoutes = require('./routes/companionRoutes');
 const voiceAgentRoutes = require('./routes/voiceAgentRoutes');
+const { servePublicAvatar } = require('./utils/publicAvatar');
 const {
   securityHeaders,
   sanitizeErrorResponses,
@@ -54,6 +55,8 @@ app.use('/static', express.static(path.join(__dirname, '../public'), { dotfiles:
 app.use('/api', rateLimit({ name: 'api', windowMs: 60 * 1000, max: 600 }));
 
 app.use('/api', healthRoutes);
+// Profile photos other players see (leaderboards, game lobbies).
+app.get('/api/public/avatars/:userId', servePublicAvatar);
 app.use('/api/auth', authRoutes);
 app.use('/api', companionRoutes);
 // Every user-scoped route requires a token issued to that same user.

@@ -1,5 +1,6 @@
 const { WebSocketServer } = require('ws');
 const { avatarForName } = require('../config/presetAvatars');
+const { rememberSocketAvatar, socketAvatar } = require('./gamePlayerAvatars');
 const {
   getGamePuzzlesWithin,
   prewarmGamePuzzles,
@@ -129,6 +130,7 @@ const registerAntowordSocket = server => {
     const roster = humans.map(entry => ({
       id: entry.playerId,
       name: entry.displayName,
+      avatarUrl: socketAvatar(entry.socket),
       isYou: entry.playerId === viewerId,
     }));
     const fillNeeded = Math.max(0, Math.min(targetCount, TARGET_PLAYERS) - roster.length);
@@ -196,7 +198,7 @@ const registerAntowordSocket = server => {
     room.players.map(player => ({
       id: player.id,
       name: player.name,
-      avatarUrl: player.isBot ? avatarForName(player.name) : '',
+      avatarUrl: player.isBot ? avatarForName(player.name) : player.avatarUrl || '',
       isYou: player.id === viewerId,
     }));
 
@@ -390,6 +392,7 @@ const registerAntowordSocket = server => {
       const player = {
         id: entry.playerId,
         name: entry.displayName,
+        avatarUrl: socketAvatar(entry.socket),
         isBot: false,
         socket: entry.socket,
         score: 0,
@@ -607,7 +610,8 @@ const registerAntowordSocket = server => {
     pushLeaderboard(room);
   };
 
-  wss.on('connection', socket => {
+  wss.on('connection', (socket, request) => {
+    rememberSocketAvatar(socket, request);
     sendJson(socket, { type: 'connected', path: WS_PATH });
 
     socket.on('message', raw => {
