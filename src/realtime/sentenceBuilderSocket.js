@@ -581,13 +581,17 @@ const registerSentenceBuilderSocket = server => {
 
     const challengeId = String(payload.challengeId || '');
     if (!player.challenge || player.challenge.id !== challengeId) {
-      sendJson(socket, { type: 'error', message: 'This question has expired.' });
+      // The app is on an older question: send the current one so it never gets stuck.
+      if (player.challenge) {
+        sendJson(socket, { type: 'challenge_sync', challenge: serializeChallenge(player.challenge) });
+      }
       return;
     }
 
     const result = resolveAnswer(player, payload.answer, room);
     if (!result) {
-      sendJson(socket, { type: 'error', message: 'Pick one of the four words.' });
+      // Unreadable answer: let the app clear the slots so the player can try again.
+      sendJson(socket, { type: 'answer_rejected', challengeId });
       return;
     }
 
