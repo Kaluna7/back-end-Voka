@@ -45,7 +45,7 @@ const decodeBase64Payload = (base64, maxBytes) => {
   return buffer;
 };
 
-const encodeBufferToWebpDataUrl = async (buffer) => {
+const encodeBufferToWebpDataUrl = async (buffer, maxEdge = MAX_EDGE) => {
   const metadata = await sharp(buffer, {
     failOn: 'error',
     limitInputPixels: MAX_INPUT_PIXELS,
@@ -60,7 +60,7 @@ const encodeBufferToWebpDataUrl = async (buffer) => {
     limitInputPixels: MAX_INPUT_PIXELS,
   })
     .rotate()
-    .resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true })
+    .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
     .webp({ quality: WEBP_QUALITY })
     .toBuffer();
 
@@ -79,14 +79,14 @@ const encodeBufferToWebpDataUrl = async (buffer) => {
   return encoded;
 };
 
-const normalizeUploadedImageDataUrl = async (dataUrl, maxBytes) => {
+const normalizeUploadedImageDataUrl = async (dataUrl, maxBytes, maxEdge = MAX_EDGE) => {
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) {
     throw new Error('Invalid data URL');
   }
   assertAllowedMimeType(parsed.mimeType);
   const buffer = decodeBase64Payload(parsed.base64, maxBytes);
-  return encodeBufferToWebpDataUrl(buffer);
+  return encodeBufferToWebpDataUrl(buffer, maxEdge);
 };
 
 module.exports = {

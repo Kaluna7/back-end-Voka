@@ -1,5 +1,7 @@
 const { normalizeUploadedImageDataUrl } = require('./imageUploadSecurity');
 
+const AVATAR_MAX_EDGE = 512;
+
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 const TRUSTED_AVATAR_HOST_SUFFIXES = [
@@ -63,7 +65,8 @@ const sanitizeProfileAvatarForStorage = async (avatarInput, { existingAvatarUrl 
   }
 
   if (trimmed.startsWith('data:')) {
-    return normalizeUploadedImageDataUrl(trimmed, MAX_AVATAR_UPLOAD_BYTES);
+    // Profile photos are shown small: 512px WebP keeps them light for every viewer.
+    return normalizeUploadedImageDataUrl(trimmed, MAX_AVATAR_UPLOAD_BYTES, AVATAR_MAX_EDGE);
   }
 
   const existing = typeof existingAvatarUrl === 'string' ? existingAvatarUrl.trim() : '';
