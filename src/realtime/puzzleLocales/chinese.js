@@ -41,14 +41,20 @@ const STORY_BANK = [
   {
     title: '早晨的咖啡',
     body: '我 每早 都 喝 咖啡。 今天 我 错过 了 火车， 迟到 了。 在 车站 我 打开 笔记本， 写下 会议 要点。 下一班 火车 也 晚点， 会议 也 推迟 了。 我 轻轻 笑了， 因为 压力 没有 帮助。',
+    titleRoman: "Zǎochén de kāfēi",
+    bodyRoman: "wǒ měizǎo dōu hē kāfēi. jīntiān wǒ cuòguò le huǒchē, chídào le. zài chēzhàn wǒ dǎkāi bǐjìběn, xiěxià huìyì yàodiǎn. xià-yì-bān huǒchē yě wǎndiǎn, huìyì yě tuīchí le. wǒ qīngqīng xiào-le, yīnwèi yālì méiyǒu bāngzhù.",
   },
   {
     title: '一封家书',
     body: '一个 下雨 的 星期二， 祖母 的 信 到了。 里面 有 照片 和 童年 汤 的 食谱。 那天 晚上 我 做了 汤， 邀请 了 邻居。 我们 聊 温暖 的 话， 我 答应 冬天 前 回家。',
+    titleRoman: "Yì fēng jiāshū",
+    bodyRoman: "yí-gè xiàyǔ de xīngqī'èr, zǔmǔ de xìn dào-le. lǐmiàn yǒu zhàopiàn hé tóngnián tāng de shípǔ. nàtiān wǎnshang wǒ zuò-le tāng, yāoqǐng le línjū. wǒmen liáo wēnnuǎn de huà, wǒ dāying dōngtiān qián huíjiā.",
   },
   {
     title: '第一次演讲',
     body: '我 从来 没有 在 公众 面前 说话， 直到 团队 选 了 我。 几周 我 在 空 房间 练习。 台上 我 的 手 在 抖， 但 第一个 笑话 让 大家 笑了。 信心 一句 一句 长 起来。 一个 学生 说 研究 感觉 很 有人情味。',
+    titleRoman: "Dì-yī cì yǎnjiǎng",
+    bodyRoman: "wǒ cónglái méiyǒu zài gōngzhòng miànqián shuōhuà, zhídào tuánduì xuǎn le wǒ. jǐ-zhōu wǒ zài kōng fángjiān liànxí. táishang wǒ de shǒu zài dǒu, dàn dì-yī-gè xiàohua ràng dàjiā xiào-le. xìnxīn yí-jù yí-jù zhǎng qǐlái. yí-gè xuésheng shuō yánjiū gǎnjué hěn yǒu-rénqíngwèi.",
   },
 ];
 

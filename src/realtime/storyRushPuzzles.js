@@ -268,7 +268,10 @@ const buildChallenge = (learningLanguage = 'English', aiItems = null) => {
   return {
     id: `sr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     title: story.title,
+    titleRoman: story.titleRoman || '',
     body: story.body,
+    // Built-in Japanese / Chinese stories carry a word-aligned Latin reading too.
+    bodyRoman: story.bodyRoman || '',
     roundEndsAt,
     wordCount: story.body.split(/\s+/).filter(Boolean).length,
   };

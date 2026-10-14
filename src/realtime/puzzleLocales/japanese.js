@@ -76,14 +76,20 @@ const STORY_BANK = [
   {
     title: '朝のコーヒー',
     body: '私は 毎朝 コーヒーを 飲みます。 今日は 電車に 乗り遅れました。 駅で ノートを 開き、 会議の 要点を 書きました。 次の 電車で 会社に 着くと、 会議は 三十分 遅れていました。 私は 静かに 笑い、 慌てた 時間を 思い出しました。',
+    titleRoman: "Asa no kōhī",
+    bodyRoman: "watashi-wa maiasa kōhī-o nomimasu. kyō-wa densha-ni noriokuremashita. eki-de nōto-o hiraki, kaigi-no yōten-o kakimashita. tsugi-no densha-de kaisha-ni tsuku-to, kaigi-wa sanjuppun okurete-imashita. watashi-wa shizuka-ni warai, awateta jikan-o omoidashimashita.",
   },
   {
     title: '雨の日の手紙',
     body: '雨の 火曜日、 祖母の 字で 書かれた 手紙が 届きました。 中には 古い 写真と、 子どもの 頃の 味の スープの レシピが ありました。 私は その夜 スープを 作り、 近所の 人を 招きました。 温かい 言葉について 話し、 冬が 終わる 前に 故郷へ 帰ると 約束しました。',
+    titleRoman: "Ame no hi no tegami",
+    bodyRoman: "ame-no kayōbi, sobo-no ji-de kakareta tegami-ga todokimashita. naka-ni-wa furui shashin-to, kodomo-no koro-no aji-no sūpu-no reshipi-ga arimashita. watashi-wa sono-yoru sūpu-o tsukuri, kinjo-no hito-o manekimashita. atatakai kotoba-ni-tsuite hanashi, fuyu-ga owaru mae-ni kokyō-e kaeru-to yakusoku-shimashita.",
   },
   {
     title: '初めての発表',
     body: '私は 人前で 話すのが 苦手でした。 それでも チームに 選ばれ、 何週間も 空の 部屋で 練習しました。 舞台では 手が 震えましたが、 最初の 冗談で 笑いが 起きました。 自信は すぐには 来ませんでした。 一つ 一つの 文と ともに 育ちました。 研究が 人間的に 感じられると 言ってくれた 学生がいて、 勇気は 借りる ものだと 分かりました。',
+    titleRoman: "Hajimete no happyō",
+    bodyRoman: "watashi-wa hitomae-de hanasu-no-ga nigate-deshita. soredemo chīmu-ni erabare, nanshūkan-mo kara-no heya-de renshū-shimashita. butai-de-wa te-ga furuemashita-ga, saisho-no jōdan-de warai-ga okimashita. jishin-wa sugu-ni-wa kimasen-deshita. hitotsu hitotsu-no bun-to tomo-ni sodachimashita. kenkyū-ga ningen-teki-ni kanjirareru-to itte-kureta gakusei-ga-ite, yūki-wa kariru mono-da-to wakarimashita.",
   },
 ];
 
