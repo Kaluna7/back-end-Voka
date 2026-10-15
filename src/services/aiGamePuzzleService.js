@@ -234,7 +234,9 @@ const callDeepseekJson = async prompt => {
         role: 'system',
         content:
           'You write accurate, natural language-learning game content for beginner learners (A1 to A2 level). ' +
-          'Every word must be real and correctly spelled. Never repeat an item. Reply with JSON only.',
+          'Every word must be real and correctly spelled. Never repeat an item. ' +
+          'All content must be family-friendly: no violence, sexual content, drugs, alcohol, gambling or profanity. ' +
+          'Reply with JSON only.',
       },
       { role: 'user', content: prompt },
     ],

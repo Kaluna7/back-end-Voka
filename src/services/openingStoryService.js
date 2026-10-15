@@ -169,7 +169,8 @@ FORMAT (strict):
 - Alternate narration and dialogue in 10–16 short paragraphs separated by blank lines; keep each paragraph 1–3 sentences so it stays easy to read.
 - Start with an [exp] scene paragraph. End with ${name} saying something that invites the user to reply (usually a question).
 - ${lengthRule}
-- No markdown, headings, emojis, lists, or meta commentary. Output only the scene.`;
+- No markdown, headings, emojis, lists, or meta commentary. Output only the scene.
+- Keep it suitable for a general audience: affection stays wholesome; no sexual or suggestive content, graphic violence, drugs, alcohol abuse or profanity.`;
 
   return [
     { role: 'system', content: system },
