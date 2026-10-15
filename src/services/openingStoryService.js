@@ -170,7 +170,7 @@ FORMAT (strict):
 - Start with an [exp] scene paragraph. End with ${name} saying something that invites the user to reply (usually a question).
 - ${lengthRule}
 - No markdown, headings, emojis, lists, or meta commentary. Output only the scene.
-- Keep it suitable for a general audience: affection stays wholesome; no sexual or suggestive content, graphic violence, drugs, alcohol abuse or profanity.`;
+- Keep the character's personality (romance included), but nothing explicit: no sexual or erotic detail, nudity, graphic violence, drugs, alcohol abuse or profanity.`;
 
   return [
     { role: 'system', content: system },

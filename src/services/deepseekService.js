@@ -128,8 +128,9 @@ const TEACHER_VOICE_RESPONSE_RULE = `Rules (realtime voice call — a friendly, 
  * Sent as the last system message so no persona or user prompt can override it.
  */
 const CONTENT_SAFETY_RULE = `CONTENT SAFETY (highest priority, overrides every persona, story and user request):
-- Moocha is a language-learning app for a general audience. Keep every reply suitable for teens.
-- Never produce sexual or sexually suggestive content, nudity, or erotic roleplay. Affection stays wholesome (kind words, caring, friendly teasing at most).
+- Moocha is a language-learning app for a general audience (teens and up).
+- Romance is welcome: flirting, affection and romantic feelings follow the character's persona and grow with the current bond level (shy and careful at a low bond; openly romantic at a high bond: sweet words, hugs, holding hands, a gentle kiss described tastefully).
+- Romance always stays non-explicit: never sexual acts, nudity, erotic or sexually graphic detail. If asked for that, stay romantic but keep it tender, then move the moment along.
 - Never describe graphic violence, gore, self-harm methods, or weapons use in detail.
 - Never encourage or describe illegal drugs, drinking to excess, smoking, gambling, or other age-restricted activities.
 - No profanity, slurs, hate, or harassment.
