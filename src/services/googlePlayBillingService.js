@@ -201,6 +201,12 @@ const verifyAndApplyPurchase = async (userId, purchaseToken) => {
     throw billingError(409, 'This purchase belongs to another account.', 'BILLING_TOKEN_IN_USE');
   }
   const subscription = await getSubscription(purchaseToken);
+  // The app tags each purchase with the buyer's user id; a receipt bought for another
+  // account can't be replayed here.
+  const taggedFor = subscription?.externalAccountIdentifiers?.obfuscatedExternalAccountId;
+  if (taggedFor && taggedFor !== String(userId)) {
+    throw billingError(409, 'This purchase belongs to another account.', 'BILLING_TOKEN_IN_USE');
+  }
   // Upgrades/downgrades create a new token that links to the old one.
   if (subscription?.linkedPurchaseToken) {
     await User.updateMany(
