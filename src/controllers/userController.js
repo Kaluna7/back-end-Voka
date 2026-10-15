@@ -2,6 +2,7 @@ const { User, sanitizeUser } = require('../models/User');
 const { ensureInvitationCodeForUser } = require('../utils/invitationCode');
 const { sanitizeProfileAvatarForStorage } = require('../utils/avatarImage');
 const { normalizeAppLanguage } = require('../config/appLanguage');
+const { deleteUserAccount } = require('../services/accountDeletionService');
 
 /** Free accounts may only learn these; other languages need a subscription (same list as the app). */
 const FREE_LEARNING_LANGUAGES = new Set(['English']);
@@ -145,7 +146,18 @@ const updateProfile = async (req, res) => {
   });
 };
 
+/** DELETE /api/users/:userId — permanently deletes the signed-in user's account. */
+const deleteAccount = async (req, res) => {
+  try {
+    await deleteUserAccount(req.params.userId);
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    return res.status(error?.status || 500).json({ message: error?.status ? error.message : 'Failed to delete account.' });
+  }
+};
+
 module.exports = {
+  deleteAccount,
   getProfile,
   updateOnboarding,
   updateProfile,

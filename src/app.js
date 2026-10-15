@@ -57,7 +57,7 @@ app.use('/api', rateLimit({ name: 'api', windowMs: 60 * 1000, max: 600 }));
 app.use('/api', healthRoutes);
 // Public legal pages (Play Store listing + in-app links).
 const LEGAL_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'";
-['terms', 'privacy'].forEach(page => {
+['terms', 'privacy', 'delete-account'].forEach(page => {
   app.get(`/${page}`, (_req, res) => {
     res.setHeader('Content-Security-Policy', LEGAL_PAGE_CSP);
     res.setHeader('Cache-Control', 'public, max-age=3600');

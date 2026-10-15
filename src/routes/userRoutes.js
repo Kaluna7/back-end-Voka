@@ -1,5 +1,5 @@
 const express = require('express');
-const { getProfile, updateOnboarding, updateProfile } = require('../controllers/userController');
+const { getProfile, updateOnboarding, updateProfile, deleteAccount } = require('../controllers/userController');
 const { redeemInvitationCode, claimInvitationReward } = require('../controllers/invitationController');
 const {
   invitationRedeemRateLimit,
@@ -10,6 +10,8 @@ const { profileAvatarUploadRateLimit } = require('../middleware/profileAvatarRat
 const router = express.Router();
 
 router.get('/:userId/profile', getProfile);
+// Permanent account deletion (Profile → Delete account). requireUserAuth guards /:userId.
+router.delete('/:userId', deleteAccount);
 router.put('/:userId/onboarding', updateOnboarding);
 router.put('/:userId/profile', profileAvatarUploadRateLimit, updateProfile);
 router.post(
