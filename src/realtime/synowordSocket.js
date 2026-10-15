@@ -8,6 +8,7 @@ const {
   normalizeAnyAnswer,
 } = require('../services/aiGamePuzzleService');
 const GAME_KEY = 'synoword';
+const { judgeAnswer } = require('../services/answerJudgeService');
 /** Longest a match waits for AI questions before falling back to the built-in ones. */
 const PUZZLE_WAIT_MS = 25000;
 const {
@@ -19,6 +20,7 @@ const {
   randomBotName,
   calcSynowordExp,
   isCorrectAnswer,
+  secondOpinionRequest,
   pickBotAnswer,
   normalizeAnswer,
 } = require('./synowordPuzzles');
@@ -266,7 +268,7 @@ const registerSynowordSocket = server => {
     return player.challenge;
   };
 
-  const resolveAnswer = (player, answer, room) => {
+  const resolveAnswer = (player, answer, room, judgedCorrect = false) => {
     const challenge = player.challenge;
     if (!challenge) {
       return null;
@@ -276,7 +278,7 @@ const registerSynowordSocket = server => {
     if (!normalized || normalized.length < (challenge.ai ? 1 : 2)) {
       return null;
     }
-    const correct = isCorrectAnswer(challenge, challenge.ai ? answer : normalized);
+    const correct = judgedCorrect || isCorrectAnswer(challenge, challenge.ai ? answer : normalized);
     if (correct) {
       player.score += POINTS_CORRECT;
       player.solvedCount += 1;
@@ -561,7 +563,7 @@ const registerSynowordSocket = server => {
     processQueueTick();
   };
 
-  const handleSubmitAnswer = (socket, payload) => {
+  const handleSubmitAnswer = async (socket, payload) => {
     const meta = socketMeta.get(socket);
     if (!meta?.roomId) {
       sendJson(socket, { type: 'error', message: 'Not in a match.' });
@@ -590,7 +592,33 @@ const registerSynowordSocket = server => {
       return;
     }
 
-    const result = resolveAnswer(player, payload.answer, room);
+    // Not in the answer list? Ask the AI before calling a real answer wrong.
+    const challenge = player.challenge;
+    let judgedCorrect = false;
+    const request = secondOpinionRequest(challenge, payload.answer);
+    if (request) {
+      if (player.judging) {
+        return;
+      }
+      player.judging = true;
+      try {
+        judgedCorrect = await judgeAnswer({
+          game: GAME_KEY,
+          language: room.learningLanguage,
+          prompt: request.prompt,
+          answer: String(payload.answer || ''),
+          accepted: request.accepted,
+        });
+      } finally {
+        player.judging = false;
+      }
+      // The match may have ended (or moved on) while the AI was thinking.
+      if (room.ended || player.challenge !== challenge) {
+        return;
+      }
+    }
+
+    const result = resolveAnswer(player, payload.answer, room, judgedCorrect);
     if (!result) {
       sendJson(socket, { type: 'error', message: 'Enter a synonym (at least 2 letters).' });
       return;
@@ -655,7 +683,9 @@ const registerSynowordSocket = server => {
       }
 
       if (type === 'submit_answer') {
-        handleSubmitAnswer(socket, payload);
+        handleSubmitAnswer(socket, payload).catch(error =>
+          console.warn('[synoword] submit failed', error?.message || error),
+        );
         return;
       }
 

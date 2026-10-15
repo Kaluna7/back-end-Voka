@@ -140,6 +140,27 @@ const calcSynowordExp = (finalScore, rank = 5) => {
   return Math.max(safeScore > 0 ? 1 : 0, base + winBonus);
 };
 
+/**
+ * A typed answer that isn't in the list may still be right (the list is never complete).
+ * Returns what the AI judge needs, or null when there's nothing to double-check.
+ */
+const secondOpinionRequest = (challenge, answer) => {
+  const normalized = challenge.ai ? normalizeAnyAnswer(answer) : normalizeAnswer(answer);
+  if (!normalized || normalized.length < (challenge.ai ? 1 : 2)) {
+    return null;
+  }
+  if (isCorrectAnswer(challenge, challenge.ai ? answer : normalized)) {
+    return null;
+  }
+  const sameAsPrompt = challenge.ai
+    ? challenge.promptForms.includes(normalized)
+    : normalized === normalizeAnswer(challenge.prompt);
+  if (sameAsPrompt) {
+    return null;
+  }
+  return { prompt: challenge.prompt, accepted: challenge.accepted };
+};
+
 module.exports = {
   SYNONYM_BANK,
   MATCH_DURATION_MS: 5 * 60 * 1000,
@@ -148,6 +169,7 @@ module.exports = {
   buildChallenge,
   serializeChallenge,
   isCorrectAnswer,
+  secondOpinionRequest,
   normalizeAnswer,
   pickBotAnswer,
   randomBotName,

@@ -264,6 +264,97 @@ const callDeepseekJson = async prompt => {
 
 const itemSignature = item => JSON.stringify(item).toLowerCase();
 
+/**
+ * What a second AI pass checks per game. "extra" games may also add correct answers the
+ * first pass forgot, so a right answer isn't marked wrong in the game.
+ */
+const REVIEW_RULES = {
+  sudoword: { check: 'Remove items whose "word" is not a real, correctly spelled word.' },
+  synoword: {
+    check: 'Remove items where an answer is NOT a real synonym of "word", is misspelled, or is the same word.',
+    extra: 'answers',
+    extraRule: 'other common single-word synonyms of "word" that learners would type (max 6 per item)',
+  },
+  antoword: {
+    check: 'Remove items where an answer is NOT a real antonym (opposite) of "word", or is misspelled.',
+    extra: 'answers',
+    extraRule: 'other common single-word antonyms of "word" that learners would type (max 6 per item)',
+  },
+  wordDetective: {
+    check: 'Remove items whose clue contains the answer, is too vague, or does not clearly lead to the answer.',
+    extra: 'alternatives',
+    extraRule: 'other single words that fit the clue equally well (max 4 per item)',
+  },
+  wordsense: {
+    check:
+      'Remove items where the correct word does not match the definition, or where ANY "wrong" word also fits the definition (synonyms of the correct word are not allowed as wrong options).',
+  },
+  contextMaster: {
+    check:
+      'Remove items where the correct word does not fit the blank, or where ANY "wrong" word could also fill the blank grammatically and sensibly.',
+  },
+  sentenceBuilder: {
+    check:
+      'Remove items whose sentence is ungrammatical, unnatural, or whose pieces are not in the correct order.',
+  },
+  storyRush: { check: 'Remove items with grammar mistakes, misspellings or unnatural sentences.' },
+};
+
+const REVIEW_TIMEOUT_ITEMS = 40;
+
+/**
+ * Second AI pass over freshly generated items: drops broken questions (e.g. a "wrong"
+ * option that is actually right) and adds forgotten correct answers. On any failure the
+ * items are kept as they were.
+ */
+const reviewItems = async (gameKey, language, items) => {
+  const rule = REVIEW_RULES[gameKey];
+  if (!rule || !items.length) {
+    return items;
+  }
+  const batch = items.slice(0, REVIEW_TIMEOUT_ITEMS);
+  const extraFormat = rule.extra
+    ? `
+For good items, "extra" lists ${rule.extraRule}, each text in this format: ${pairFormat(language)}
+Only real, correctly spelled ${language} words that are not already listed; [] if none.`
+    : '';
+  // A verdict + reason per item makes the reviewer actually check each one.
+  const json = await callDeepseekJson(`You are a strict ${language} teacher checking items for a language-learning game (${gameKey}). Learners are beginners.
+Check every item one by one. An item is bad when: ${rule.check.replace(/^Remove items /, '')}
+An item is also bad when it is not in ${language}, or its romanized reading (if any) is wrong.${extraFormat}
+Items (index: item):
+${batch.map((item, index) => `${index}: ${JSON.stringify(item)}`).join('\n')}
+Return one entry per item, in order.
+JSON: {"items": [{"i": <index>, "ok": true or false, "why": "<few words>"${rule.extra ? ', "extra": [<text>, ...]' : ''}}]}`);
+  const verdicts = Array.isArray(json?.items) ? json.items : null;
+  if (!verdicts || verdicts.length < batch.length * 0.8) {
+    return items;
+  }
+  const byIndex = new Map(verdicts.map(entry => [Number(entry?.i), entry]));
+  const remove = new Set(
+    [...byIndex.entries()].filter(([, entry]) => entry?.ok === false).map(([index]) => index),
+  );
+  // Never let a bad review wipe out a whole batch.
+  if (remove.size > batch.length * 0.6) {
+    return items;
+  }
+  const reviewed = batch
+    .map((item, index) => {
+      if (remove.has(index)) {
+        return null;
+      }
+      const extra = rule.extra ? pairList(byIndex.get(index)?.extra, language, 0, 40) : null;
+      if (!extra?.length) {
+        return item;
+      }
+      const existing = new Set((item[rule.extra] || []).map(pair => pair.text.toLowerCase()));
+      const additions = extra.filter(pair => !existing.has(pair.text.toLowerCase())).slice(0, 6);
+      return additions.length ? { ...item, [rule.extra]: [...(item[rule.extra] || []), ...additions] } : item;
+    })
+    .filter(Boolean);
+  return [...reviewed, ...items.slice(REVIEW_TIMEOUT_ITEMS)];
+};
+
 const generateItems = async (gameKey, language) => {
   const spec = SPECS[gameKey];
   const json = await callDeepseekJson(`${spec.prompt(language)}
@@ -271,7 +362,7 @@ const generateItems = async (gameKey, language) => {
 ${beginnerRules(language)}`);
   const raw = Array.isArray(json?.items) ? json.items : [];
   const seen = new Set();
-  return raw
+  const validated = raw
     .map(item => spec.validate(item, language))
     .filter(item => {
       if (!item) {
@@ -284,6 +375,7 @@ ${beginnerRules(language)}`);
       seen.add(signature);
       return true;
     });
+  return reviewItems(gameKey, language, validated);
 };
 
 /** True when this game should use AI questions for this language. */
@@ -410,6 +502,7 @@ const acceptedForms = pairs => {
 };
 
 module.exports = {
+  reviewItems,
   getGamePuzzles,
   getGamePuzzlesWithin,
   prewarmGamePuzzles,

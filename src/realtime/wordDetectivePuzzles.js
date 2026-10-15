@@ -207,6 +207,24 @@ const calcWordDetectiveExp = (finalScore, rank = 5) => {
   return Math.max(safeScore > 0 ? 1 : 0, base + winBonus);
 };
 
+/**
+ * A typed answer that isn't in the list may still fit the clue (the list is never complete).
+ * Returns what the AI judge needs, or null when there's nothing to double-check.
+ */
+const secondOpinionRequest = (challenge, answer) => {
+  const normalized = challenge.ai ? normalizeAnyAnswer(answer) : normalizeAnswer(answer);
+  if (!normalized || normalized.length < (challenge.ai ? 1 : 2)) {
+    return null;
+  }
+  if (isCorrectAnswer(challenge, challenge.ai ? answer : normalized)) {
+    return null;
+  }
+  if (!challenge.ai && normalized === challenge.base) {
+    return null;
+  }
+  return { prompt: challenge.clue, accepted: challenge.accepted };
+};
+
 module.exports = {
   CLUE_COUNT: CLUE_BANK.length,
   MATCH_DURATION_MS: 5 * 60 * 1000,
@@ -215,6 +233,7 @@ module.exports = {
   buildChallenge,
   serializeChallenge,
   isCorrectAnswer,
+  secondOpinionRequest,
   normalizeAnswer,
   pickBotAnswer,
   randomBotName,

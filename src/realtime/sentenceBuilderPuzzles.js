@@ -385,6 +385,7 @@ const buildChallenge = (_learningLanguage = 'English', aiItems = null) => {
       ai: true,
       tokens: shuffleTokensKeepWordsIntact(tokens),
       correct: normalizeAnyAnswer(item.words.map(piece => piece.text).join('')),
+      sentenceText: item.words.map(piece => piece.text).join(' '),
     };
   }
   const sentence = pickSentence();
@@ -393,6 +394,7 @@ const buildChallenge = (_learningLanguage = 'English', aiItems = null) => {
     id: `sb_${Date.now()}_random`,
     tokens,
     correct: normalizeAnswer(sentence),
+    sentenceText: sentence,
   };
 };
 
@@ -436,6 +438,23 @@ const calcSentenceBuilderExp = (finalScore, rank = 5) => {
   return Math.max(safeScore > 0 ? 1 : 0, base + winBonus);
 };
 
+const sortedChars = text => Array.from(text).sort().join('');
+
+/**
+ * Another word order can also be right (Korean / Japanese / German are flexible).
+ * Only asks when the answer uses exactly the same pieces as the expected sentence.
+ */
+const secondOpinionRequest = (challenge, answer) => {
+  if (isCorrectAnswer(challenge, answer)) {
+    return null;
+  }
+  const normalized = challenge.ai ? normalizeAnyAnswer(answer) : normalizeAnswer(answer);
+  if (!normalized || !challenge.sentenceText || sortedChars(normalized) !== sortedChars(challenge.correct)) {
+    return null;
+  }
+  return { prompt: challenge.sentenceText, accepted: [] };
+};
+
 module.exports = {
   QUESTION_COUNT: SENTENCE_BANK.length,
   MATCH_DURATION_MS: 5 * 60 * 1000,
@@ -444,6 +463,7 @@ module.exports = {
   buildChallenge,
   serializeChallenge,
   isCorrectAnswer,
+  secondOpinionRequest,
   normalizeAnswer,
   shuffleArray,
   tokenizeSentence,
