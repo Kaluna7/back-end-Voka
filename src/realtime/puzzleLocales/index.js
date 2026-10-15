@@ -6,6 +6,7 @@ const german = require('./german');
 const indonesian = require('./indonesian');
 const chinese = require('./chinese');
 const french = require('./french');
+const storyRushExtraBanks = require('./storyRushExtraBanks');
 
 const normalizedLang = learningLanguage => normalizeLearningLanguage(learningLanguage);
 
@@ -117,7 +118,7 @@ const getStoryRushBank = learningLanguage => {
   if (lang === 'French') {
     return french.STORY_BANK;
   }
-  return null;
+  return storyRushExtraBanks[lang] || null;
 };
 
 module.exports = {

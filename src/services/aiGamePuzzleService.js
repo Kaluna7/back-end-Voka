@@ -185,6 +185,7 @@ JSON: {"items": [{"sentence": <text>, "correct": <text>, "wrong": [<text>, <text
     batch: 24,
     prompt: language => `Create 24 natural everyday ${language} sentences for a "put the words in order" game.
 Split each sentence into 4 to 9 word pieces in the correct order (for languages written without spaces, split into natural word units).
+Every sentence must have at least 4 pieces: make it long enough by adding a time, place, person or object (e.g. "In the morning I drink coffee at home"), never 2 or 3 piece sentences.
 Each piece uses this format: ${pairFormat(language)}
 JSON: {"items": [{"words": [<piece>, <piece>, ...]}]}`,
     validate: (item, language) => {
@@ -195,7 +196,7 @@ JSON: {"items": [{"words": [<piece>, <piece>, ...]}]}`,
   storyRush: {
     batch: 8,
     skip: language => NO_WORD_SPACES.has(language),
-    prompt: language => `Write 8 short ${language} stories to read aloud (40 to 60 words each, simple everyday language, words separated by spaces).
+    prompt: language => `Write 8 short ${language} stories to read aloud (each body at least 35 space-separated words and at most 70, simple everyday language, words separated by spaces).
 Each story has a title and a body. Each text uses this format: ${pairFormat(language)}
 JSON: {"items": [{"title": <text>, "body": <text>}]}`,
     validate: (item, language) => {
@@ -205,7 +206,8 @@ JSON: {"items": [{"title": <text>, "body": <text>}]}`,
         return null;
       }
       const words = body.text.split(/\s+/).filter(Boolean).length;
-      return words >= 25 && words <= 90 ? { title, body } : null;
+      // Agglutinative languages (Korean, Turkish…) pack more into each spaced word.
+      return words >= 18 && words <= 90 ? { title, body } : null;
     },
   },
 };
