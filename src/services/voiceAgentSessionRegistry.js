@@ -49,7 +49,8 @@ const appendVoiceAgentHistory = (sessionId, userText, assistantText) => {
   if (assistantText) {
     history.push({ role: 'assistant', content: String(assistantText) });
   }
-  const limit = Math.max(8, Number(current.historyLimit) || 8);
+  // Keep enough of the call for the teacher to remember it (read window is 20 turns).
+  const limit = Math.max(12, Number(current.historyLimit) || 12);
   while (history.length > limit * 2) {
     history.shift();
   }

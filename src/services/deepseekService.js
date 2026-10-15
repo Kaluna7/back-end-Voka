@@ -416,7 +416,12 @@ const buildLayeredChatMessages = ({
   let memoryContext = '';
   if (forVoice) {
     if (isTeacher && callChatTopic) {
-      memoryContext = buildTeacherCallTopicContext(callChatTopic);
+      memoryContext = [
+        buildTeacherCallTopicContext(callChatTopic),
+        buildTeacherChatMemoryContext(history, Math.max(historyLimit, 20), { forVoice: true }),
+      ]
+        .filter(Boolean)
+        .join('\n\n');
     } else if (!isTeacher) {
       memoryContext = buildVoiceMemoryContext(history, Math.max(historyLimit * 2, historyLimit));
     } else {
@@ -437,8 +442,9 @@ const buildLayeredChatMessages = ({
     layers.push({ role: 'system', content: longTermMemory });
   }
 
+  // Teacher calls keep the whole recent conversation in view (in-call turns included).
   const historyWindow =
-    isTeacher && forVoice ? Math.max(historyLimit, 8) : effectiveHistoryLimit;
+    isTeacher && forVoice ? Math.max(historyLimit, 20) : effectiveHistoryLimit;
   layers.push(...normalizeHistory(history, historyWindow));
   layers.push({ role: 'user', content: message });
   return layers;
@@ -478,10 +484,28 @@ const logDeepseekCacheUsage = (usage, { model, companionId, forVoice = false } =
   });
 };
 
-const normalizeHistory = (history, limit = 12) =>
+/**
+ * History turns come in two shapes: {role:'user'|'ai', text} from the app/chat, and
+ * {role:'user'|'assistant', content} appended during a voice call. Read both — before this,
+ * every in-call turn was dropped and the teacher "forgot" the call while talking.
+ */
+const toHistoryTurns = history =>
   Array.isArray(history)
     ? history
-        .filter(item => item && (item.role === 'user' || item.role === 'ai') && typeof item.text === 'string')
+        .map(item => {
+          if (!item) {
+            return null;
+          }
+          const role = item.role === 'ai' || item.role === 'assistant' ? 'ai' : item.role === 'user' ? 'user' : null;
+          const text = typeof item.text === 'string' ? item.text : typeof item.content === 'string' ? item.content : '';
+          return role && text.trim() ? { role, text } : null;
+        })
+        .filter(Boolean)
+    : [];
+
+const normalizeHistory = (history, limit = 12) =>
+  Array.isArray(history)
+    ? toHistoryTurns(history)
         .slice(-Math.max(1, limit))
         .map(item => ({
           role: item.role === 'ai' ? 'assistant' : 'user',
@@ -491,8 +515,7 @@ const normalizeHistory = (history, limit = 12) =>
 
 const buildVoiceMemoryContext = (history, limit = 8) => {
   const normalized = Array.isArray(history)
-    ? history
-        .filter(item => item && (item.role === 'user' || item.role === 'ai') && typeof item.text === 'string')
+    ? toHistoryTurns(history)
         .slice(-Math.max(1, limit))
     : [];
   if (!normalized.length) {
@@ -515,8 +538,7 @@ const buildTeacherCallTopicContext = callChatTopic => {
 
 const buildTeacherChatMemoryContext = (history, limit = 20, { forVoice = false } = {}) => {
   const normalized = Array.isArray(history)
-    ? history
-        .filter(item => item && (item.role === 'user' || item.role === 'ai') && typeof item.text === 'string')
+    ? toHistoryTurns(history)
         .slice(-Math.max(1, limit))
     : [];
   if (!normalized.length) {

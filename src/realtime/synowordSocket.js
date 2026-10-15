@@ -583,7 +583,10 @@ const registerSynowordSocket = server => {
 
     const challengeId = String(payload.challengeId || '');
     if (!player.challenge || player.challenge.id !== challengeId) {
-      sendJson(socket, { type: 'error', message: 'This question has expired.' });
+      // The app is on an older question (e.g. a fast double tap): resend the current one.
+      if (player.challenge) {
+        sendJson(socket, { type: 'challenge_sync', challenge: serializeChallenge(player.challenge) });
+      }
       return;
     }
 
